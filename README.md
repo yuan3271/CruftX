@@ -1,6 +1,6 @@
 # CruftX
 
-一个原生 macOS 垃圾清理工具，界面遵循 Apple 人机界面指南（HIG）。
+一个原生 macOS 垃圾清理工具，界面遵循 Apple 人机界面指南（HIG）。由AI开发
 
 ## 功能
 
