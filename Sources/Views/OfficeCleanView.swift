@@ -16,8 +16,10 @@ struct OfficeCleanView: View {
             } else if store.officeGroups.isEmpty {
                 EmptyStateView(
                     icon: "bubble.left.and.bubble.right",
-                    title: store.officeGroups.isEmpty && store.hasScanned ? "没有发现办公软件缓存" : "办公软件专清",
-                    message: "点击「扫描」检查微信、企业微信、QQ、钉钉、飞书、腾讯会议的缓存。\n微信只扫描文件缓存，聊天记录永远不会被扫描或删除。"
+                    title: store.officeGroups.isEmpty && store.hasScanned
+                        ? L10n.tr("office_empty_none", default: "没有发现办公软件缓存")
+                        : L10n.tr("office_empty_not_scanned", default: "办公软件专清"),
+                    message: L10n.tr("office_empty_msg", default: "点击「扫描」检查微信、企业微信、QQ、钉钉、飞书、腾讯会议的缓存。\n微信只扫描文件缓存，聊天记录永远不会被扫描或删除。")
                 )
             } else {
                 List {
@@ -68,7 +70,7 @@ struct OfficeCleanView: View {
                 .listStyle(.bordered)
             }
         }
-        .navigationTitle("办公专清")
+        .navigationTitle(L10n.tr("office_clean", default: "办公专清"))
         .toolbar { scanToolbarButton }
     }
 
@@ -76,9 +78,11 @@ struct OfficeCleanView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(store.officeGroups.isEmpty ? "办公专清" : "\(store.officeGroups.count) 个应用，共 \(store.officeTotalBytes.fileSizeText)")
+                    Text(store.officeGroups.isEmpty
+                         ? L10n.tr("office_clean", default: "办公专清")
+                         : L10n.tr("office_total", default: "%d 个应用，共 %@", store.officeGroups.count, store.officeTotalBytes.fileSizeText))
                         .font(.headline)
-                    Text("默认不勾选，确认每一项后再清理")
+                    Text(L10n.tr("office_default_note", default: "默认不勾选，确认每一项后再清理"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -86,7 +90,7 @@ struct OfficeCleanView: View {
                 Button {
                     Task { await store.scanOffice() }
                 } label: {
-                    Label("扫描", systemImage: "arrow.clockwise")
+                    Label(L10n.tr("start_scan", default: "扫描"), systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(store.isScanning)
@@ -94,13 +98,13 @@ struct OfficeCleanView: View {
                 Button {
                     Task { await store.clean(store.officeGroups.flatMap(\.branches).flatMap(\.items).filter(\.isSelected)) }
                 } label: {
-                    Label("清理选中", systemImage: "trash")
+                    Label(L10n.tr("clean_selected", default: "清理选中"), systemImage: "trash")
                 }
                 .disabled(store.officeGroups.isEmpty || store.isScanning || store.officeGroups.flatMap(\.branches).flatMap(\.items).filter(\.isSelected).isEmpty)
             }
 
             Label(
-                "微信专清只处理图片/视频/文件缓存与临时文件；聊天记录数据库（db_storage）永远不会被扫描或删除。",
+                L10n.tr("office_banner", default: "微信专清只处理图片/视频/文件缓存与临时文件；聊天记录数据库（db_storage）永远不会被扫描或删除。"),
                 systemImage: "shield.checkered"
             )
             .font(.caption)
@@ -128,7 +132,7 @@ struct OfficeCleanView: View {
             Button {
                 Task { await store.scanOffice() }
             } label: {
-                Label("扫描", systemImage: "arrow.clockwise")
+                Label(L10n.tr("start_scan", default: "扫描"), systemImage: "arrow.clockwise")
             }
             .disabled(store.isScanning)
         }

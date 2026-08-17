@@ -11,7 +11,7 @@ struct ContentView: View {
         } detail: {
             switch selection ?? .dashboard {
             case .dashboard:
-                DashboardView()
+                DashboardView(selection: $selection)
             case .dailyJunk:
                 DailyJunkView()
             case .uninstallResidue:
@@ -20,11 +20,16 @@ struct ContentView: View {
                 OfficeCleanView()
             case .uninstall:
                 UninstallView()
+            case .recycleBin:
+                RecycleBinView()
             case .settings:
                 SettingsView()
             }
         }
         .background(.background)
+        .task {
+            await store.checkForUpdate()
+        }
     }
 }
 
@@ -33,16 +38,17 @@ struct SidebarView: View {
 
     var body: some View {
         List(selection: $selection) {
-            Section("概览") {
+            Section(L10n.tr("overview", default: "概览")) {
                 sidebarRow(.dashboard)
             }
-            Section("清理工具") {
+            Section(L10n.tr("clean_tools", default: "清理工具")) {
                 sidebarRow(.dailyJunk)
                 sidebarRow(.uninstallResidue)
                 sidebarRow(.officeClean)
             }
-            Section("应用管理") {
+            Section(L10n.tr("app_management", default: "应用管理")) {
                 sidebarRow(.uninstall)
+                sidebarRow(.recycleBin)
             }
             Section {
                 sidebarRow(.settings)
@@ -52,7 +58,7 @@ struct SidebarView: View {
         .navigationTitle("CruftX")
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 4) {
-                Text("CruftX 1.0")
+                Text("CruftX \(UpdateChecker.currentVersion)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text("清理前会先移入废纸篓")

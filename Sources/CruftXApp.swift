@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct CruftXApp: App {
     @StateObject private var store = ScanStore()
+    @StateObject private var language = LanguageManager.shared
 
     init() {
         // Headless smoke test: runs the scanners and prints a summary.
@@ -48,6 +49,8 @@ struct CruftXApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(store)
+                .environmentObject(language)
+                .id(language.languageCode)
                 .frame(minWidth: 920, minHeight: 600)
         }
         .defaultSize(width: 1080, height: 720)

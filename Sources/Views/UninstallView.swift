@@ -26,7 +26,7 @@ struct UninstallView: View {
 
             if store.installedApps.isEmpty {
                 Spacer()
-                ProgressView("正在读取已安装应用…")
+                ProgressView(L10n.tr("loading_apps", default: "正在读取已安装应用…"))
                 Spacer()
             } else {
                 List(filteredApps) { app in
@@ -38,7 +38,7 @@ struct UninstallView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(displayName(for: app))
                                 .font(.body)
-                            Text(app.bundleID ?? "未知包名")
+                            Text(app.bundleID ?? L10n.tr("unknown_bundle", default: "未知包名"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -49,7 +49,7 @@ struct UninstallView: View {
                             .font(.callout.monospacedDigit())
                             .foregroundStyle(.secondary)
 
-                        Button("卸载") {
+                        Button(L10n.tr("uninstall", default: "卸载")) {
                             appToUninstall = app
                         }
                         .buttonStyle(.bordered)
@@ -59,13 +59,13 @@ struct UninstallView: View {
                 .listStyle(.bordered)
             }
         }
-        .navigationTitle("卸载应用")
+        .navigationTitle(L10n.tr("uninstall_app", default: "卸载应用"))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     Task { await store.loadInstalledApps() }
                 } label: {
-                    Label("刷新", systemImage: "arrow.clockwise")
+                    Label(L10n.tr("refresh", default: "刷新"), systemImage: "arrow.clockwise")
                 }
             }
         }
@@ -77,8 +77,8 @@ struct UninstallView: View {
         .sheet(item: $appToUninstall) { app in
             confirmSheet(app)
         }
-        .alert("卸载完成", isPresented: $showSummary) {
-            Button("好", role: .cancel) {}
+        .alert(L10n.tr("uninstall_done", default: "卸载完成"), isPresented: $showSummary) {
+            Button(L10n.tr("cancel", default: "好"), role: .cancel) {}
         } message: {
             Text(summaryMessage)
         }
@@ -87,16 +87,16 @@ struct UninstallView: View {
     private var header: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("已安装应用")
+                Text(L10n.tr("installed_apps", default: "已安装应用"))
                     .font(.headline)
-                Text("卸载会把应用本体移入废纸篓，可随时恢复")
+                Text(L10n.tr("uninstall_note", default: "卸载会把应用本体移入废纸篓，可随时恢复"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            TextField("搜索应用", text: $searchText)
+            TextField(L10n.tr("search_apps", default: "搜索应用"), text: $searchText)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 220)
         }
@@ -106,22 +106,22 @@ struct UninstallView: View {
 
     private func confirmSheet(_ app: InstalledAppInfo) -> some View {
         VStack(spacing: 16) {
-            Text("卸载 \(app.name)")
+            Text(L10n.tr("uninstall_title", default: "卸载 %@", app.name))
                 .font(.title3.weight(.semibold))
 
             if isRunning(app) {
-                Label("该应用正在运行，建议先退出再卸载。", systemImage: "exclamationmark.triangle.fill")
+                Label(L10n.tr("running_warning", default: "该应用正在运行，建议先退出再卸载。"), systemImage: "exclamationmark.triangle.fill")
                     .font(.callout)
                     .foregroundStyle(.orange)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Text("应用本体（\(app.sizeText)）将移入废纸篓。")
+            Text(L10n.tr("app_size_note", default: "应用本体（%@）将移入废纸篓。", app.sizeText))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            Toggle("同时清理相关数据（缓存、偏好设置、容器等）", isOn: $includeData)
+            Toggle(L10n.tr("include_data", default: "同时清理相关数据（缓存、偏好设置、容器等）"), isOn: $includeData)
                 .toggleStyle(.checkbox)
 
             if includeData {
@@ -130,17 +130,17 @@ struct UninstallView: View {
                         HStack(spacing: 8) {
                             ProgressView()
                                 .controlSize(.small)
-                            Text("正在计算相关数据…")
+                            Text(L10n.tr("computing_related", default: "正在计算相关数据…"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                     } else if relatedItems.isEmpty {
-                        Text("未找到相关数据，将只卸载应用本体。")
+                        Text(L10n.tr("no_related", default: "未找到相关数据，将只卸载应用本体。"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("将一并移入废纸篓：\(relatedItems.count) 项，共 \(relatedItems.reduce(Int64(0)) { $0 + $1.sizeBytes }.fileSizeText)")
+                            Text(L10n.tr("related_total", default: "将一并移入废纸篓：%d 项，共 %@", relatedItems.count, relatedItems.reduce(Int64(0)) { $0 + $1.sizeBytes }.fileSizeText))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             ForEach(relatedItems.prefix(5)) { item in
@@ -163,14 +163,14 @@ struct UninstallView: View {
             }
 
             HStack {
-                Button("取消") {
+                Button(L10n.tr("cancel", default: "取消")) {
                     appToUninstall = nil
                 }
                 .buttonStyle(.bordered)
 
                 Spacer()
 
-                Button("移入废纸篓") {
+                Button(L10n.tr("move_to_trash", default: "移入废纸篓")) {
                     Task {
                         summary = await store.uninstall(app, includeData: includeData)
                         appToUninstall = nil
@@ -212,13 +212,13 @@ struct UninstallView: View {
 
     private var summaryMessage: String {
         guard let summary else { return "" }
-        var message = "已把应用移入废纸篓"
+        var message = L10n.tr("uninstall_summary", default: "已把应用移入废纸篓")
         if summary.itemCount > 1 {
-            message += "及 \(summary.itemCount - 1) 项相关数据"
+            message += L10n.tr("uninstall_summary_data", default: "及 %d 项相关数据", summary.itemCount - 1)
         }
-        message += "，释放 \(summary.freedText)。"
+        message += L10n.tr("freed", default: "，释放 %@。", summary.freedText)
         if !summary.failedPaths.isEmpty {
-            message += "\n有 \(summary.failedPaths.count) 项未能清理（可能正被占用）：\(summary.failedPaths.prefix(3).joined(separator: "、"))"
+            message += "\n" + L10n.tr("clean_failed", default: "有 %d 项未能清理（可能正被占用）：%@", summary.failedPaths.count, summary.failedPaths.prefix(3).joined(separator: "、"))
         }
         return message
     }

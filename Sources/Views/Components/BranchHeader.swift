@@ -27,7 +27,9 @@ struct CheckboxButton: View {
         }
         .buttonStyle(.plain)
         .font(.system(size: 18))
-        .help(state == .partial ? "部分选中，点击全选" : "点击切换本分支全部项目")
+        .help(state == .partial
+              ? L10n.tr("partial_help", default: "部分选中，点击全选")
+              : L10n.tr("toggle_help", default: "点击切换本分支全部项目"))
     }
 }
 
@@ -82,6 +84,8 @@ struct BranchHeader: View {
 struct BranchItemRow: View {
     let item: JunkItem
     let onToggle: () -> Void
+    var onIgnoreTemporary: (() -> Void)? = nil
+    var onIgnorePermanent: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 12) {
@@ -110,14 +114,28 @@ struct BranchItemRow: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .help("在 Finder 中显示")
+            .help(L10n.tr("show_in_finder", default: "在 Finder 中显示"))
         }
         .padding(.vertical, 3)
         .contextMenu {
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([item.path])
             } label: {
-                Label("在 Finder 中显示", systemImage: "magnifyingglass")
+                Label(L10n.tr("show_in_finder", default: "在 Finder 中显示"), systemImage: "magnifyingglass")
+            }
+            if let onIgnoreTemporary {
+                Button {
+                    onIgnoreTemporary()
+                } label: {
+                    Label(L10n.tr("ignore_7d", default: "暂时忽略 7 天"), systemImage: "clock.badge.questionmark")
+                }
+            }
+            if let onIgnorePermanent {
+                Button {
+                    onIgnorePermanent()
+                } label: {
+                    Label(L10n.tr("ignore_forever", default: "永久忽略"), systemImage: "eye.slash")
+                }
             }
         }
     }

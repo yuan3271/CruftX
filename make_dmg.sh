@@ -22,8 +22,10 @@ swift -sdk "$SDK" -module-cache-path build/ModuleCache \
   Tools/make_dmg_bg.swift build/dmg-background.png
 
 echo "==> Building CruftX-1.0.dmg"
-build/dmg-venv/bin/dmgbuild -s Tools/dmg-settings.json CruftX build/CruftX-1.0.dmg
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
+echo "==> Building CruftX-$VERSION.dmg"
+build/dmg-venv/bin/dmgbuild -s Tools/dmg-settings.json CruftX "build/CruftX-$VERSION.dmg"
 
 echo "==> Verifying"
-hdiutil verify build/CruftX-1.0.dmg | tail -1
-echo "==> Done: build/CruftX-1.0.dmg"
+hdiutil verify "build/CruftX-$VERSION.dmg" | tail -1
+echo "==> Done: build/CruftX-$VERSION.dmg"

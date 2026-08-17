@@ -1,9 +1,13 @@
 import Foundation
 
-/// Moves items to the Trash instead of deleting them, so cleanup is
+/// Moves items to the Trash (or the app-managed Recycle Bin) so cleanup is
 /// recoverable. Reports what was freed and what failed.
 enum Cleaner {
-    static func clean(_ items: [JunkItem]) -> CleanSummary {
+    static func clean(_ items: [JunkItem], destination: String = "trash") -> CleanSummary {
+        if destination == "recycle" {
+            return RecycleBin.move(items)
+        }
+
         var freed: Int64 = 0
         var cleanedCount = 0
         var failed: [String] = []

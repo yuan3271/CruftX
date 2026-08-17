@@ -6,18 +6,20 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
     case uninstallResidue
     case officeClean
     case uninstall
+    case recycleBin
     case settings
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .dashboard: return "概览"
-        case .dailyJunk: return "日常垃圾"
-        case .uninstallResidue: return "卸载残留"
-        case .officeClean: return "办公专清"
-        case .uninstall: return "卸载应用"
-        case .settings: return "设置"
+        case .dashboard: return L10n.tr("dashboard", default: "概览")
+        case .dailyJunk: return L10n.tr("daily_junk", default: "日常垃圾")
+        case .uninstallResidue: return L10n.tr("uninstall_residue", default: "卸载残留")
+        case .officeClean: return L10n.tr("office_clean", default: "办公专清")
+        case .uninstall: return L10n.tr("uninstall_app", default: "卸载应用")
+        case .recycleBin: return L10n.tr("recycle_bin", default: "回收站")
+        case .settings: return L10n.tr("settings", default: "设置")
         }
     }
 
@@ -28,6 +30,7 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         case .uninstallResidue: return "square.grid.2x2"
         case .officeClean: return "bubble.left.and.bubble.right"
         case .uninstall: return "xmark.app"
+        case .recycleBin: return "arrow.uturn.backward.circle"
         case .settings: return "gearshape"
         }
     }
@@ -45,11 +48,11 @@ enum JunkKind: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .caches: return "应用缓存"
-        case .logs: return "日志文件"
-        case .diagnosticReports: return "诊断报告"
-        case .derivedData: return "Xcode 派生数据"
-        case .tempFiles: return "临时文件"
+        case .caches: return L10n.tr("junk_kind_caches", default: "应用缓存")
+        case .logs: return L10n.tr("junk_kind_logs", default: "日志文件")
+        case .diagnosticReports: return L10n.tr("junk_kind_diagnostics", default: "诊断报告")
+        case .derivedData: return L10n.tr("junk_kind_derived", default: "Xcode 派生数据")
+        case .tempFiles: return L10n.tr("junk_kind_temp", default: "临时文件")
         }
     }
 
@@ -65,11 +68,11 @@ enum JunkKind: String, CaseIterable, Identifiable {
 
     var detail: String {
         switch self {
-        case .caches: return "应用运行时生成的缓存，可安全重建"
-        case .logs: return "应用与系统的日志输出"
-        case .diagnosticReports: return "崩溃报告与诊断数据"
-        case .derivedData: return "Xcode 构建产物，重新打开项目时会重建"
-        case .tempFiles: return "系统临时目录中当前用户的文件"
+        case .caches: return L10n.tr("junk_kind_caches_detail", default: "应用运行时生成的缓存，可安全重建")
+        case .logs: return L10n.tr("junk_kind_logs_detail", default: "应用与系统的日志输出")
+        case .diagnosticReports: return L10n.tr("junk_kind_diagnostics_detail", default: "崩溃报告与诊断数据")
+        case .derivedData: return L10n.tr("junk_kind_derived_detail", default: "Xcode 构建产物，重新打开项目时会重建")
+        case .tempFiles: return L10n.tr("junk_kind_temp_detail", default: "系统临时目录中当前用户的文件")
         }
     }
 
@@ -98,12 +101,12 @@ enum ResidueKind: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .applicationSupport: return "应用支持文件"
-        case .caches: return "缓存"
-        case .preferences: return "偏好设置"
-        case .savedState: return "已保存的窗口状态"
-        case .httpStorage: return "网络存储"
-        case .logs: return "日志"
+        case .applicationSupport: return L10n.tr("residue_kind_app_support", default: "应用支持文件")
+        case .caches: return L10n.tr("residue_kind_caches", default: "缓存")
+        case .preferences: return L10n.tr("residue_kind_prefs", default: "偏好设置")
+        case .savedState: return L10n.tr("residue_kind_saved_state", default: "已保存的窗口状态")
+        case .httpStorage: return L10n.tr("residue_kind_http", default: "网络存储")
+        case .logs: return L10n.tr("residue_kind_logs", default: "日志")
         }
     }
 
@@ -132,12 +135,12 @@ enum OfficeKind: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .appCache: return "应用缓存"
-        case .imageCache: return "图片缓存"
-        case .videoCache: return "视频缓存"
-        case .fileCache: return "文件缓存"
-        case .tempCache: return "临时文件"
-        case .otherCache: return "其他缓存"
+        case .appCache: return L10n.tr("office_kind_app_cache", default: "应用缓存")
+        case .imageCache: return L10n.tr("office_kind_image", default: "图片缓存")
+        case .videoCache: return L10n.tr("office_kind_video", default: "视频缓存")
+        case .fileCache: return L10n.tr("office_kind_file", default: "文件缓存")
+        case .tempCache: return L10n.tr("office_kind_temp", default: "临时文件")
+        case .otherCache: return L10n.tr("office_kind_other", default: "其他缓存")
         }
     }
 

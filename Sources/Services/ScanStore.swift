@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Central state holder for the app. All published state is main-actor bound.
@@ -5,12 +6,20 @@ import SwiftUI
 final class ScanStore: ObservableObject {
     @Published var dailyGroups: [ScanGroup] = []
     @Published var residueGroups: [ScanGroup] = []
+    @Published var ignoredResidueGroups: [ScanGroup] = []
     @Published var officeGroups: [OfficeScanGroup] = []
     @Published var installedApps: [InstalledAppInfo] = []
+    @Published var recycleEntries: [RecycleBin.Entry] = []
+    @Published var updateInfo: UpdateInfo?
+    @Published var isCheckingUpdate = false
+    @Published var isDownloadingUpdate = false
+    @Published var updateMessage: String?
     @Published var isScanning = false
-    @Published var progressText = "准备就绪"
+    @Published var progressText = L10n.tr("status_ready", default: "准备就绪")
     @Published var lastMessage: String?
     @Published var lastError: String?
+
+    @AppStorage("cleanupDestination") var cleanupDestination = "trash"
 
     @Published var includeCaches = true
     @Published var includeLogs = true
@@ -52,13 +61,19 @@ final class ScanStore: ObservableObject {
     }
 
     var hasScanned: Bool {
-        !dailyGroups.isEmpty || !residueGroups.isEmpty
+        !dailyGroups.isEmpty || !residueGroups.isEmpty || !ignoredResidueGroups.isEmpty
     }
+
+    var cleanupDestinationIsRecycle: Bool {
+        Self.destinationValue == "recycle"
+    }
+
+    // MARK: - Scanning
 
     func startScan() async {
         guard !isScanning else { return }
         isScanning = true
-        progressText = "正在扫描…"
+        progressText = L10n.tr("scanning", default: "正在扫描…")
         lastError = nil
 
         let enabledKinds = enabledJunkKinds()
@@ -71,26 +86,33 @@ final class ScanStore: ObservableObject {
         }.value
 
         dailyGroups = Self.groupDaily(dailyEntries)
-        residueGroups = Self.groupResidue(residueEntries)
-        progressText = "扫描完成"
-
+        let (active, ignored) = partitionByIgnoreStatus(residueEntries)
+        residueGroups = Self.groupResidue(active)
+        ignoredResidueGroups = Self.groupResidue(ignored)
+        progressText = L10n.tr("scan_done", default: "扫描完成")
         isScanning = false
     }
 
     func clean(_ items: [JunkItem]) async {
         guard !items.isEmpty else { return }
         isScanning = true
-        progressText = "正在清理…"
+        progressText = L10n.tr("cleaning", default: "正在清理…")
 
+        let destination = Self.destinationValue
         let summary = await Task.detached(priority: .userInitiated) {
-            Cleaner.clean(items)
+            Cleaner.clean(items, destination: destination)
         }.value
 
         removeCleaned(items)
-        progressText = "清理完成"
-        lastMessage = "已清理 \(summary.itemCount) 项，释放 \(summary.freedText)"
+        progressText = L10n.tr("clean_done", default: "清理完成")
+        if destination == "recycle" {
+            lastMessage = L10n.tr("clean_summary_recycle", default: "已移动 %d 项到回收站，共 %@", summary.itemCount, summary.freedText)
+            refreshRecycleBin()
+        } else {
+            lastMessage = L10n.tr("clean_summary_trash", default: "已清理 %d 项，释放 %@", summary.itemCount, summary.freedText)
+        }
         if !summary.failedPaths.isEmpty {
-            lastError = "有 \(summary.failedPaths.count) 项未能清理（可能正被占用）"
+            lastError = L10n.tr("clean_failed", default: "有 %d 项未能清理（可能正被占用）：%@", summary.failedPaths.count, summary.failedPaths.prefix(3).joined(separator: "、"))
         }
         isScanning = false
     }
@@ -98,7 +120,7 @@ final class ScanStore: ObservableObject {
     func scanOffice() async {
         guard !isScanning else { return }
         isScanning = true
-        progressText = "正在扫描办公软件…"
+        progressText = L10n.tr("scanning_office", default: "正在扫描办公软件…")
         lastError = nil
 
         let groups = await Task.detached(priority: .userInitiated) {
@@ -106,9 +128,11 @@ final class ScanStore: ObservableObject {
         }.value
 
         officeGroups = groups
-        progressText = "扫描完成"
+        progressText = L10n.tr("scan_done", default: "扫描完成")
         isScanning = false
     }
+
+    // MARK: - Uninstall
 
     func loadInstalledApps() async {
         let apps = await Task.detached(priority: .userInitiated) {
@@ -125,12 +149,137 @@ final class ScanStore: ObservableObject {
         return summary
     }
 
+    // MARK: - Ignore management
+
+    func ignoreResidue(_ items: [JunkItem], kind: IgnoreManager.Kind) {
+        guard !items.isEmpty else { return }
+        for item in items {
+            IgnoreManager.ignore(path: item.path.path, kind: kind)
+        }
+        let ids = Set(items.map(\.id))
+
+        var dropped: [JunkItem] = []
+        residueGroups = residueGroups.compactMap { group in
+            var keep: [JunkItem] = []
+            for item in group.items {
+                if ids.contains(item.id) {
+                    dropped.append(item)
+                } else {
+                    keep.append(item)
+                }
+            }
+            guard !keep.isEmpty else { return nil }
+            return ScanGroup(id: group.id, title: group.title, icon: group.icon, detail: group.detail, subtitle: group.subtitle, items: keep)
+        }
+
+        if kind == .temporary, !dropped.isEmpty {
+            merge(items: dropped, into: &ignoredResidueGroups)
+        }
+    }
+
+    func unignoreResidue(_ items: [JunkItem]) {
+        guard !items.isEmpty else { return }
+        for item in items {
+            IgnoreManager.unignore(path: item.path.path)
+        }
+        let ids = Set(items.map(\.id))
+        var dropped: [JunkItem] = []
+        ignoredResidueGroups = ignoredResidueGroups.compactMap { group in
+            var keep: [JunkItem] = []
+            for item in group.items {
+                if ids.contains(item.id) {
+                    dropped.append(item)
+                } else {
+                    keep.append(item)
+                }
+            }
+            guard !keep.isEmpty else { return nil }
+            return ScanGroup(id: group.id, title: group.title, icon: group.icon, detail: group.detail, subtitle: group.subtitle, items: keep)
+        }
+        if !dropped.isEmpty {
+            merge(items: dropped, into: &residueGroups)
+        }
+    }
+
+    func unignore(path: String) {
+        IgnoreManager.unignore(path: path)
+        for groupIndex in ignoredResidueGroups.indices {
+            ignoredResidueGroups[groupIndex].items.removeAll { $0.path.path == path }
+        }
+        ignoredResidueGroups.removeAll { $0.items.isEmpty }
+    }
+
+    // MARK: - Recycle bin
+
+    func refreshRecycleBin() {
+        recycleEntries = RecycleBin.entries()
+    }
+
+    func restoreRecycleEntry(_ entry: RecycleBin.Entry) {
+        if RecycleBin.restore(entry) {
+            refreshRecycleBin()
+        }
+    }
+
+    func deleteRecycleEntry(_ entry: RecycleBin.Entry) {
+        if RecycleBin.delete(entry) {
+            refreshRecycleBin()
+        }
+    }
+
+    func emptyRecycleBin() {
+        _ = RecycleBin.emptyAll()
+        refreshRecycleBin()
+    }
+
+    // MARK: - Auto update
+
+    func checkForUpdate(force: Bool = false) async {
+        if !force {
+            let last = UserDefaults.standard.object(forKey: "lastUpdateCheckDate") as? Date
+            if let last, Date().timeIntervalSince(last) < 86_400 { return }
+        }
+        isCheckingUpdate = true
+        do {
+            let info = try await Task.detached(priority: .background) {
+                try await UpdateChecker.checkLatest()
+            }.value
+            updateInfo = info
+            updateMessage = nil
+            if info != nil {
+                UserDefaults.standard.set(Date(), forKey: "lastUpdateCheckDate")
+            }
+        } catch {
+            updateInfo = nil
+            updateMessage = L10n.tr("update_failed", default: "检查更新失败（暂无 Releases 或网络不可用）")
+        }
+        isCheckingUpdate = false
+    }
+
+    func downloadUpdate() async {
+        guard let info = updateInfo else { return }
+        isDownloadingUpdate = true
+        do {
+            let url = try await Task.detached(priority: .userInitiated) {
+                try await UpdateChecker.download(info)
+            }.value
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+            updateMessage = L10n.tr("download_done", default: "下载完成，已打开安装镜像。")
+        } catch {
+            updateMessage = L10n.tr("download_failed", default: "下载失败：%@", error.localizedDescription)
+        }
+        isDownloadingUpdate = false
+    }
+
+    // MARK: - Selection helpers
+
     func reset() {
         dailyGroups = []
         residueGroups = []
+        ignoredResidueGroups = []
         lastMessage = nil
         lastError = nil
-        progressText = "准备就绪"
+        progressText = L10n.tr("status_ready", default: "准备就绪")
     }
 
     func toggleSelection(_ id: String) {
@@ -145,6 +294,13 @@ final class ScanStore: ObservableObject {
             for itemIndex in residueGroups[groupIndex].items.indices
             where residueGroups[groupIndex].items[itemIndex].id == id {
                 residueGroups[groupIndex].items[itemIndex].isSelected.toggle()
+                return
+            }
+        }
+        for groupIndex in ignoredResidueGroups.indices {
+            for itemIndex in ignoredResidueGroups[groupIndex].items.indices
+            where ignoredResidueGroups[groupIndex].items[itemIndex].id == id {
+                ignoredResidueGroups[groupIndex].items[itemIndex].isSelected.toggle()
                 return
             }
         }
@@ -177,6 +333,7 @@ final class ScanStore: ObservableObject {
         }
         toggle(&dailyGroups)
         toggle(&residueGroups)
+        toggle(&ignoredResidueGroups)
         for officeIndex in officeGroups.indices {
             for branchIndex in officeGroups[officeIndex].branches.indices
             where officeGroups[officeIndex].branches[branchIndex].id == groupID {
@@ -186,6 +343,47 @@ final class ScanStore: ObservableObject {
                     officeGroups[officeIndex].branches[branchIndex].items[itemIndex].isSelected = !allSelected
                 }
                 return
+            }
+        }
+    }
+
+    // MARK: - Private helpers
+
+    private static var destinationValue: String {
+        UserDefaults.standard.string(forKey: "cleanupDestination") ?? "trash"
+    }
+
+    private func partitionByIgnoreStatus(_ entries: [ScannedEntry]) -> ([ScannedEntry], [ScannedEntry]) {
+        var active: [ScannedEntry] = []
+        var ignored: [ScannedEntry] = []
+        for entry in entries {
+            switch IgnoreManager.status(of: entry.path.path) {
+            case .none:
+                active.append(entry)
+            case .temporary:
+                ignored.append(entry)
+            case .permanent:
+                break
+            }
+        }
+        return (active, ignored)
+    }
+
+    private func merge(items: [JunkItem], into groups: inout [ScanGroup]) {
+        let grouped = Dictionary(grouping: items) { $0.appName?.lowercased() ?? "?" }
+        for (key, groupItems) in grouped {
+            if let index = groups.firstIndex(where: { $0.id == key }) {
+                groups[index].items.append(contentsOf: groupItems)
+            } else {
+                let bundleID = groupItems.compactMap { ResidueScanner.bundleID(from: $0.name) }.first
+                groups.append(ScanGroup(
+                    id: key,
+                    title: groupItems.first?.appName ?? key,
+                    icon: "app.dashed",
+                    detail: L10n.tr("temporarily_ignored", default: "暂时忽略"),
+                    subtitle: bundleID,
+                    items: groupItems
+                ))
             }
         }
     }
@@ -215,11 +413,15 @@ final class ScanStore: ObservableObject {
         let cleanedIDs = Set(items.map(\.id))
         dailyGroups = dailyGroups.map { group in
             ScanGroup(id: group.id, title: group.title, icon: group.icon, detail: group.detail,
-                      items: group.items.filter { !cleanedIDs.contains($0.id) })
+                      subtitle: group.subtitle, items: group.items.filter { !cleanedIDs.contains($0.id) })
         }.filter { !$0.items.isEmpty }
         residueGroups = residueGroups.map { group in
             ScanGroup(id: group.id, title: group.title, icon: group.icon, detail: group.detail,
-                      items: group.items.filter { !cleanedIDs.contains($0.id) })
+                      subtitle: group.subtitle, items: group.items.filter { !cleanedIDs.contains($0.id) })
+        }.filter { !$0.items.isEmpty }
+        ignoredResidueGroups = ignoredResidueGroups.map { group in
+            ScanGroup(id: group.id, title: group.title, icon: group.icon, detail: group.detail,
+                      subtitle: group.subtitle, items: group.items.filter { !cleanedIDs.contains($0.id) })
         }.filter { !$0.items.isEmpty }
     }
 
@@ -252,7 +454,7 @@ final class ScanStore: ObservableObject {
                 id: key,
                 title: title,
                 icon: "app.dashed",
-                detail: "已卸载应用的遗留文件",
+                detail: L10n.tr("residue_leftover_detail", default: "已卸载应用的遗留文件"),
                 subtitle: bundleID,
                 items: items.map { JunkItem(
                     id: $0.id, name: $0.name, path: $0.path, sizeBytes: $0.sizeBytes,
