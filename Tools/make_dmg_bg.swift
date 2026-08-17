@@ -89,13 +89,36 @@ guard let cgImage = ctx.makeImage() else {
     fputs("failed to create image\n", stderr)
     exit(1)
 }
+
+// The bitmap context is bottom-up; PNG output is top-down. Flip the final
+// image vertically so the background renders with the correct orientation.
+guard let flippedContext = CGContext(
+    data: nil,
+    width: Int(w),
+    height: Int(h),
+    bitsPerComponent: 8,
+    bytesPerRow: 0,
+    space: colorSpace,
+    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+) else {
+    fputs("failed to create flip context\n", stderr)
+    exit(1)
+}
+flippedContext.translateBy(x: 0, y: h)
+flippedContext.scaleBy(x: 1, y: -1)
+flippedContext.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
+guard let finalImage = flippedContext.makeImage() else {
+    fputs("failed to flip image\n", stderr)
+    exit(1)
+}
+
 guard let destination = CGImageDestinationCreateWithURL(
     outputURL as CFURL, "public.png" as CFString, 1, nil
 ) else {
     fputs("failed to create destination\n", stderr)
     exit(1)
 }
-CGImageDestinationAddImage(destination, cgImage, nil)
+CGImageDestinationAddImage(destination, finalImage, nil)
 guard CGImageDestinationFinalize(destination) else {
     fputs("failed to write PNG\n", stderr)
     exit(1)
