@@ -1,0 +1,16 @@
+{
+  "title": "CruftX 1.0",
+  "volume_name": "CruftX",
+  "background": "build/dmg-background.png",
+  "icon": "build/CruftX.app/Contents/Resources/AppIcon.icns",
+  "format": "UDZO",
+  "compression_level": 9,
+  "window": {
+    "position": { "x": 200, "y": 160 },
+    "size": { "width": 660, "height": 400 }
+  },
+  "contents": [
+    { "x": 170, "y": 197, "type": "file", "path": "build/CruftX.app" },
+    { "x": 490, "y": 197, "type": "link", "path": "/Applications" }
+  ]
+}

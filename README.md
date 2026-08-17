@@ -26,6 +26,17 @@
 - `build/CruftX.app` — 可双击运行的应用
 - `build/CruftX.zip` — 可分发的压缩包
 
+## 制作发布 DMG
+
+```sh
+./build.sh        # 先构建应用
+./make_dmg.sh     # 生成带背景和 Applications 快捷方式的安装镜像
+```
+
+产物：`build/CruftX-1.0.dmg`。首次运行 `make_dmg.sh` 会在 `build/dmg-venv` 中安装 dmgbuild（需联网）。
+
+发布到 GitHub Releases 后，用户下载的 DMG 会被标记为“从互联网下载”，首次打开应用时若提示无法验证开发者，可在「系统设置 → 隐私与安全性」中点击「仍要打开」。
+
 ## 说明
 
 - 扫描范围是当前用户目录（`~/Library/...`），无需 root 权限
