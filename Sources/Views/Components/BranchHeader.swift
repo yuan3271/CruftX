@@ -43,6 +43,7 @@ struct BranchHeader: View {
     let selectedCount: Int
     let totalCount: Int
     let sizeText: String
+    var risk: CleanupRisk? = nil
     let onToggleAll: () -> Void
 
     var body: some View {
@@ -66,6 +67,10 @@ struct BranchHeader: View {
             }
 
             Spacer()
+
+            if let risk {
+                RiskBadge(risk: risk)
+            }
 
             Text("\(selectedCount)/\(totalCount) 项 · \(sizeText)")
                 .font(.caption.monospacedDigit())
@@ -92,9 +97,12 @@ struct BranchItemRow: View {
             CheckboxButton(state: item.isSelected ? .checked : .unchecked, action: onToggle)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.name)
-                    .font(.body)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(item.name)
+                        .font(.body)
+                        .lineLimit(1)
+                    RiskBadge(risk: item.risk, compact: true)
+                }
                 Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -141,15 +149,39 @@ struct BranchItemRow: View {
     }
 
     private var subtitle: String {
+        var parts: [String] = []
+        if let appName = item.appName {
+            parts.append(appName)
+        }
         if let officeKind = item.officeKind {
-            return officeKind.title
+            parts.append(officeKind.title)
         }
         if let residueKind = item.residueKind {
-            return residueKind.title
+            parts.append(residueKind.title)
         }
         if let kind = item.kind {
-            return kind.title
+            parts.append(kind.title)
         }
-        return ""
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// Small colored capsule showing a cleanup risk level.
+struct RiskBadge: View {
+    let risk: CleanupRisk
+    var compact: Bool = false
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: risk.icon)
+                .font(.system(size: compact ? 8 : 9, weight: .semibold))
+            Text(risk.title)
+                .font(.system(size: compact ? 9 : 10, weight: .semibold))
+        }
+        .padding(.horizontal, compact ? 5 : 7)
+        .padding(.vertical, compact ? 2 : 3)
+        .foregroundStyle(risk.color)
+        .background(risk.color.opacity(0.12), in: Capsule())
+        .help(risk.detail)
     }
 }

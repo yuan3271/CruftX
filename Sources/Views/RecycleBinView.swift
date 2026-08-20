@@ -4,9 +4,19 @@ struct RecycleBinView: View {
     @EnvironmentObject private var store: ScanStore
     @State private var entryToDelete: RecycleBin.Entry?
     @State private var confirmEmpty = false
+    @State private var searchText = ""
 
     private var totalBytes: Int64 {
         store.recycleEntries.reduce(0) { $0 + $1.sizeBytes }
+    }
+
+    private var visibleEntries: [RecycleBin.Entry] {
+        guard !searchText.isEmpty else { return store.recycleEntries }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return store.recycleEntries }
+        return store.recycleEntries.filter {
+            $0.name.lowercased().contains(query) || $0.originalPath.lowercased().contains(query)
+        }
     }
 
     var body: some View {
@@ -20,8 +30,14 @@ struct RecycleBinView: View {
                     title: L10n.tr("recycle_empty", default: "回收站是空的"),
                     message: L10n.tr("recycle_note", default: "清理时选择「CruftX 回收站」的文件会保存在这里，可还原或永久删除。")
                 )
+            } else if visibleEntries.isEmpty {
+                EmptyStateView(
+                    icon: "magnifyingglass",
+                    title: L10n.tr("no_search_results", default: "没有找到匹配项"),
+                    message: L10n.tr("no_search_results_msg", default: "换个关键词试试，例如文件名或原路径。")
+                )
             } else {
-                List(store.recycleEntries) { entry in
+                List(visibleEntries) { entry in
                     HStack(spacing: 12) {
                         Image(systemName: "doc")
                             .font(.system(size: 18))
@@ -105,6 +121,9 @@ struct RecycleBinView: View {
                 }
             }
             Spacer()
+            TextField(L10n.tr("search_recycle", default: "搜索回收站"), text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 200)
             Button(L10n.tr("empty_recycle", default: "清空回收站"), role: .destructive) {
                 confirmEmpty = true
             }

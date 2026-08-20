@@ -12,13 +12,21 @@ struct SettingsView: View {
                 Toggle(L10n.tr("junk_kind_diagnostics", default: "诊断报告"), isOn: $store.includeDiagnostics)
                 Toggle(L10n.tr("junk_kind_derived", default: "Xcode 派生数据"), isOn: $store.includeDerivedData)
                 Toggle(L10n.tr("junk_kind_temp", default: "临时文件"), isOn: $store.includeTempFiles)
+                Toggle(L10n.tr("office_clean_merged", default: "办公软件缓存（微信、QQ 等）"), isOn: $store.includeOffice)
+                Text(L10n.tr("risk_default_hint", default: "低风险内容默认勾选，中高风险需手动确认"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section(L10n.tr("uninstall_residue", default: "卸载残留")) {
                 Toggle(L10n.tr("residue_kind_app_support", default: "应用支持文件"), isOn: $store.includeAppSupport)
+                Toggle(L10n.tr("residue_kind_containers", default: "容器数据"), isOn: $store.includeContainers)
                 Toggle(L10n.tr("residue_kind_prefs", default: "偏好设置"), isOn: $store.includePrefs)
                 Toggle(L10n.tr("residue_kind_saved_state", default: "已保存的窗口状态"), isOn: $store.includeSavedState)
                 Toggle(L10n.tr("residue_kind_http", default: "网络存储 (HTTPStorages)"), isOn: $store.includeHTTPStorage)
+                Text(L10n.tr("residue_settings_note", default: "卸载残留默认不勾选；清理前请逐项确认。"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section(L10n.tr("cleanup_destination", default: "清理去向")) {

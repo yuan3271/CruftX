@@ -118,7 +118,8 @@ enum CommonApps {
     ]
 
     /// Exact match first, then prefix match (e.g. a helper bundle
-    /// "com.tencent.xinWeChat.Helper" still resolves to 微信).
+    /// "com.tencent.xinWeChat.Helper" still resolves to 微信), then a
+    /// heuristic fallback for unknown bundle IDs.
     static func displayName(for bundleID: String) -> String? {
         guard useDatabase else { return nil }
         if let exact = database[bundleID] {
@@ -128,6 +129,100 @@ enum CommonApps {
         for (key, name) in database where lower.hasPrefix(key.lowercased() + ".") {
             return name
         }
-        return nil
+        return fallbackName(for: bundleID)
+    }
+
+    /// Heuristic display name for a bundle ID or folder name, e.g.
+    /// "com.example.SomeTool.Helper" -> "Some Tool".
+    static func fallbackName(for bundleOrName: String) -> String {
+        var components = bundleOrName.split(separator: ".").map(String.init)
+        // Drop the reverse-DNS prefix, e.g. "com." / "io." / "cn.".
+        if let first = components.first,
+           ["com", "cn", "org", "io", "net", "me", "co", "app", "dev", "www"].contains(first.lowercased()) {
+            components.removeFirst()
+        }
+
+        let genericWords: Set<String> = [
+            "pro", "app", "mac", "desktop", "client", "mobile", "hd", "web",
+            "helper", "agent", "service", "daemon", "extension", "today",
+            "widget", "share", "main", "core", "lite", "beta", "test", "dev",
+            "macos", "osx", "suite", "plugin", "appex", "xpc"
+        ]
+
+        var chosen = components.last ?? bundleOrName
+        for component in components.reversed() {
+            var cleaned = component
+            for prefix in ["mac-", "macos-", "osx-"] where cleaned.lowercased().hasPrefix(prefix) {
+                cleaned = String(cleaned.dropFirst(prefix.count))
+            }
+            if cleaned.lowercased().hasSuffix("-mac") {
+                cleaned = String(cleaned.dropLast(4))
+            }
+            guard !cleaned.isEmpty, !genericWords.contains(cleaned.lowercased()) else { continue }
+            chosen = cleaned
+            break
+        }
+        return splitCamelCase(chosen)
+    }
+
+    /// Infers a user-facing app name from a Library folder name, used to
+    /// classify daily junk by app. Returns nil for generic or system paths.
+    static func appName(fromFolderName name: String, kind: JunkKind? = nil) -> String? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.hasPrefix(".") else { return nil }
+
+        // Derived data and temp folders don't carry a reliable app name.
+        if kind == .derivedData || kind == .tempFiles || kind == .diagnosticReports {
+            return nil
+        }
+
+        // Bundle-ID folders resolve through the known-app database.
+        if isBundleIDLike(trimmed), let known = displayName(for: trimmed) {
+            return known
+        }
+
+        var cleaned = trimmed
+        for suffix in [".app", ".savedState", ".plist", ".framework", ".bundle", ".plugin", ".appex"] where cleaned.hasSuffix(suffix) {
+            cleaned = String(cleaned.dropLast(suffix.count))
+        }
+        guard !cleaned.isEmpty else { return nil }
+
+        let normalized = ResidueScanner.normalize(cleaned)
+        guard normalized.count >= 3 else { return nil }
+
+        let genericTokens: Set<String> = [
+            "cache", "caches", "logs", "log", "tmp", "temp", "diagnostic",
+            "reports", "report", "crash", "crashpad", "metadata", "webkit",
+            "system", "apple", "user", "users", "shared", "library", "updates",
+            "update", "installer", "installers", "helper", "helpers", "plugins",
+            "plugin", "extensions", "extension", "services", "service",
+            "daemon", "daemons", "agent", "agents", "frameworks", "components",
+            "tools", "tool", "bin", "core", "widgets", "fonts", "keychains",
+            "containers", "preferences", "support", "app", "apps", "applications"
+        ]
+        guard !genericTokens.contains(normalized) else { return nil }
+        // Skip if the name is mostly digits (version dirs, hash suffixes).
+        let letters = normalized.filter(\.isLetter)
+        guard letters.count >= 3 else { return nil }
+
+        return fallbackName(for: cleaned)
+    }
+
+    private static func isBundleIDLike(_ string: String) -> Bool {
+        string.contains(".") && !string.contains(" ")
+    }
+
+    private static func splitCamelCase(_ string: String) -> String {
+        var result = ""
+        for (index, char) in string.enumerated() {
+            if char.isUppercase, index > 0 {
+                let previous = string[string.index(string.startIndex, offsetBy: index - 1)]
+                if previous.isLowercase || previous.isNumber {
+                    result.append(" ")
+                }
+            }
+            result.append(char)
+        }
+        return result
     }
 }

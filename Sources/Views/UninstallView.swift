@@ -16,6 +16,7 @@ struct UninstallView: View {
         return store.installedApps.filter {
             $0.name.localizedCaseInsensitiveContains(searchText)
                 || ($0.bundleID?.localizedCaseInsensitiveContains(searchText) ?? false)
+                || (displayName(for: $0).localizedCaseInsensitiveContains(searchText))
         }
     }
 

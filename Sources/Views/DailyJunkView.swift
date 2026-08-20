@@ -3,6 +3,62 @@ import SwiftUI
 struct DailyJunkView: View {
     @EnvironmentObject private var store: ScanStore
     @State private var expanded: Set<String> = []
+    @State private var viewMode: ViewMode = .category
+    @State private var searchText = ""
+
+    private enum ViewMode: String, CaseIterable, Identifiable {
+        case category
+        case app
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .category: return L10n.tr("view_by_category", default: "按分类")
+            case .app: return L10n.tr("view_by_app", default: "按应用")
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .category: return "square.grid.2x2"
+            case .app: return "app.badge"
+            }
+        }
+    }
+
+    private var sourceGroups: [ScanGroup] {
+        switch viewMode {
+        case .category: return store.dailyGroups
+        case .app: return store.dailyGroupsByApp
+        }
+    }
+
+    private var visibleGroups: [ScanGroup] {
+        guard !searchText.isEmpty else { return sourceGroups }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return sourceGroups }
+        return sourceGroups.compactMap { group in
+            let items = group.items.filter { matches($0, query: query) }
+            guard !items.isEmpty else { return nil }
+            return ScanGroup(
+                id: group.id,
+                title: group.title,
+                icon: group.icon,
+                detail: group.detail,
+                subtitle: group.subtitle,
+                items: items
+            )
+        }
+    }
+
+    private var totalItemCount: Int {
+        store.dailyGroups.flatMap(\.items).count
+    }
+
+    private var totalBytes: Int64 {
+        store.dailyGroups.reduce(0) { $0 + $1.totalBytes }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,7 +77,13 @@ struct DailyJunkView: View {
                         : L10n.tr("daily_empty_not_scanned", default: "尚未扫描"),
                     message: store.hasScanned
                         ? L10n.tr("daily_empty_none_msg", default: "日常目录很干净，或者已经被清理。")
-                        : L10n.tr("daily_empty_scan_msg", default: "点击右上角「扫描」检查缓存、日志与临时文件。\n默认只勾选安全项，大项请自行决定。")
+                        : L10n.tr("daily_empty_scan_msg", default: "点击右上角「扫描」检查缓存、日志、临时文件与办公软件缓存。\n默认只勾选低风险内容，其余请自行决定。")
+                )
+            } else if visibleGroups.isEmpty {
+                EmptyStateView(
+                    icon: "magnifyingglass",
+                    title: L10n.tr("no_search_results", default: "没有找到匹配项"),
+                    message: L10n.tr("no_search_results_msg", default: "换个关键词试试，例如应用名、文件夹名或路径。")
                 )
             } else {
                 branchList
@@ -33,7 +95,7 @@ struct DailyJunkView: View {
 
     private var branchList: some View {
         List {
-            ForEach(store.dailyGroups) { group in
+            ForEach(visibleGroups) { group in
                 DisclosureGroup(isExpanded: expandedBinding(group.id)) {
                     ForEach(group.items) { item in
                         BranchItemRow(item: item) {
@@ -45,10 +107,11 @@ struct DailyJunkView: View {
                         icon: group.icon,
                         title: group.title,
                         detail: group.detail,
-                        tint: tint(for: group.id),
+                        tint: tint(for: group),
                         selectedCount: group.items.filter(\.isSelected).count,
                         totalCount: group.items.count,
-                        sizeText: group.sizeText
+                        sizeText: group.sizeText,
+                        risk: group.maxRisk
                     ) {
                         store.toggleGroup(group.id)
                     }
@@ -59,46 +122,90 @@ struct DailyJunkView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(store.dailyGroups.isEmpty
-                     ? L10n.tr("daily_junk", default: "日常垃圾")
-                     : L10n.tr("daily_found", default: "找到 %d 项", store.dailyGroups.flatMap(\.items).count))
-                    .font(.headline)
-                if !store.dailyGroups.isEmpty {
-                    Text(L10n.tr("daily_total_note", default: "共 %@，默认只勾选安全项", store.dailyGroups.reduce(0) { $0 + $1.totalBytes }.fileSizeText))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(store.dailyGroups.isEmpty
+                         ? L10n.tr("daily_junk", default: "日常垃圾")
+                         : L10n.tr("daily_found", default: "找到 %d 项", totalItemCount))
+                        .font(.headline)
+                    if !store.dailyGroups.isEmpty {
+                        Text(L10n.tr("daily_total_note", default: "共 %@，默认只勾选低风险内容", totalBytes.fileSizeText))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
+
+                Spacer()
+
+                Picker("", selection: $viewMode) {
+                    ForEach(ViewMode.allCases) { mode in
+                        Label(mode.title, systemImage: mode.icon).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 220)
+
+                TextField(L10n.tr("search_junk", default: "搜索名称、路径或应用"), text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 240)
+
+                Button(L10n.tr("select_all", default: "全选")) { store.selectAllDaily(true) }
+                    .disabled(store.dailyGroups.isEmpty)
+                Button(L10n.tr("deselect_all", default: "取消全选")) { store.selectAllDaily(false) }
+                    .disabled(store.dailyGroups.isEmpty)
+
+                Button {
+                    Task { await store.clean(store.dailyGroups.flatMap(\.items).filter(\.isSelected)) }
+                } label: {
+                    Label(L10n.tr("clean_selected", default: "清理选中"), systemImage: "trash")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(store.dailyGroups.isEmpty || store.isScanning || store.dailySelectedBytes == 0)
             }
 
-            Spacer()
-
-            Button(L10n.tr("select_all", default: "全选")) { store.selectAllDaily(true) }
-                .disabled(store.dailyGroups.isEmpty)
-            Button(L10n.tr("deselect_all", default: "取消全选")) { store.selectAllDaily(false) }
-                .disabled(store.dailyGroups.isEmpty)
-
-            Button {
-                Task { await store.clean(store.dailyGroups.flatMap(\.items).filter(\.isSelected)) }
-            } label: {
-                Label(L10n.tr("clean_selected", default: "清理选中"), systemImage: "trash")
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(store.dailyGroups.isEmpty || store.isScanning || store.dailySelectedBytes == 0)
+            riskLegend
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 14)
     }
 
-    private func tint(for groupID: String) -> Color {
-        switch groupID {
+    private var riskLegend: some View {
+        HStack(spacing: 14) {
+            ForEach(CleanupRisk.allCases, id: \.self) { risk in
+                Label(risk.title, systemImage: risk.icon)
+                    .font(.caption)
+                    .foregroundStyle(risk.color)
+            }
+            Text(L10n.tr("risk_default_hint", default: "低风险内容默认勾选，中高风险需手动确认"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func matches(_ item: JunkItem, query: String) -> Bool {
+        let haystack = [
+            item.name,
+            item.path.path,
+            item.appName ?? "",
+            item.kind?.title ?? "",
+            item.residueKind?.title ?? "",
+            item.officeKind?.title ?? "",
+            item.risk.title
+        ].joined(separator: " ").lowercased()
+        return haystack.contains(query)
+    }
+
+    private func tint(for group: ScanGroup) -> Color {
+        switch group.id {
         case JunkKind.caches.rawValue: return .blue
         case JunkKind.logs.rawValue: return .teal
         case JunkKind.diagnosticReports.rawValue: return .orange
         case JunkKind.derivedData.rawValue: return .indigo
         case JunkKind.tempFiles.rawValue: return .gray
-        default: return .gray
+        case "officeCache": return .cyan
+        default: return .blue
         }
     }
 
@@ -131,6 +238,44 @@ struct ResidueView: View {
     @EnvironmentObject private var store: ScanStore
     @State private var expanded: Set<String> = []
     @State private var showIgnoredSheet = false
+    @State private var searchText = ""
+
+    private var visibleActiveGroups: [ScanGroup] {
+        filterGroups(store.residueGroups)
+    }
+
+    private var visibleIgnoredGroups: [ScanGroup] {
+        filterGroups(store.ignoredResidueGroups)
+    }
+
+    private func filterGroups(_ groups: [ScanGroup]) -> [ScanGroup] {
+        guard !searchText.isEmpty else { return groups }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return groups }
+        return groups.compactMap { group in
+            let items = group.items.filter { matches($0, query: query) }
+            guard !items.isEmpty else { return nil }
+            return ScanGroup(
+                id: group.id,
+                title: group.title,
+                icon: group.icon,
+                detail: group.detail,
+                subtitle: group.subtitle,
+                items: items
+            )
+        }
+    }
+
+    private func matches(_ item: JunkItem, query: String) -> Bool {
+        let haystack = [
+            item.name,
+            item.path.path,
+            item.appName ?? "",
+            item.residueKind?.title ?? "",
+            item.risk.title
+        ].joined(separator: " ").lowercased()
+        return haystack.contains(query)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -145,13 +290,19 @@ struct ResidueView: View {
                 EmptyStateView(
                     icon: "square.grid.2x2",
                     title: L10n.tr("residue_empty_not_scanned", default: "尚未扫描"),
-                    message: L10n.tr("residue_empty_scan_msg", default: "点击右上角「扫描」检查应用支持文件、偏好设置等残留。\n残留默认不勾选，确认后再手动选择。")
+                    message: L10n.tr("residue_empty_scan_msg", default: "点击右上角「扫描」检查应用支持文件、容器、偏好设置等残留。\n残留默认不勾选，确认后再手动选择。")
                 )
             } else if store.residueGroups.isEmpty && store.ignoredResidueGroups.isEmpty {
                 EmptyStateView(
                     icon: "square.grid.2x2",
                     title: L10n.tr("residue_empty_none", default: "没有发现卸载残留"),
                     message: L10n.tr("residue_empty_none_msg", default: "未找到已卸载应用留下的文件。")
+                )
+            } else if visibleActiveGroups.isEmpty && visibleIgnoredGroups.isEmpty {
+                EmptyStateView(
+                    icon: "magnifyingglass",
+                    title: L10n.tr("no_search_results", default: "没有找到匹配项"),
+                    message: L10n.tr("no_search_results_msg", default: "换个关键词试试，例如应用名、文件夹名或路径。")
                 )
             } else {
                 residueList
@@ -167,16 +318,16 @@ struct ResidueView: View {
 
     private var residueList: some View {
         List {
-            if !store.residueGroups.isEmpty {
+            if !visibleActiveGroups.isEmpty {
                 Section(L10n.tr("not_ignored", default: "未忽略")) {
-                    ForEach(store.residueGroups) { group in
+                    ForEach(visibleActiveGroups) { group in
                         residueGroup(group, ignored: false)
                     }
                 }
             }
-            if !store.ignoredResidueGroups.isEmpty {
+            if !visibleIgnoredGroups.isEmpty {
                 Section(L10n.tr("temporarily_ignored", default: "暂时忽略")) {
-                    ForEach(store.ignoredResidueGroups) { group in
+                    ForEach(visibleIgnoredGroups) { group in
                         residueGroup(group, ignored: true)
                     }
                 }
@@ -218,7 +369,8 @@ struct ResidueView: View {
                 tint: ignored ? .gray : .orange,
                 selectedCount: group.items.filter(\.isSelected).count,
                 totalCount: group.items.count,
-                sizeText: group.sizeText
+                sizeText: group.sizeText,
+                risk: ignored ? nil : group.maxRisk
             ) {
                 store.toggleGroup(group.id)
             }
@@ -246,37 +398,50 @@ struct ResidueView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(store.residueGroups.isEmpty
-                     ? L10n.tr("uninstall_residue", default: "卸载残留")
-                     : L10n.tr("residue_apps_with_files", default: "%d 个应用留有文件", store.residueGroups.count))
-                    .font(.headline)
-                if !store.residueGroups.isEmpty {
-                    Text(L10n.tr("residue_total_note", default: "共 %@，请先确认再勾选", store.residueGroups.reduce(0) { $0 + $1.totalBytes }.fileSizeText))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(store.residueGroups.isEmpty
+                         ? L10n.tr("uninstall_residue", default: "卸载残留")
+                         : L10n.tr("residue_apps_with_files", default: "%d 个应用留有文件", store.residueGroups.count))
+                        .font(.headline)
+                    if !store.residueGroups.isEmpty {
+                        Text(L10n.tr("residue_total_note", default: "共 %@，请先确认再勾选", store.residueGroups.reduce(0) { $0 + $1.totalBytes }.fileSizeText))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
+
+                Spacer()
+
+                TextField(L10n.tr("search_residue", default: "搜索名称、路径或应用"), text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 240)
+
+                Button(L10n.tr("manage_ignored", default: "已忽略管理")) {
+                    showIgnoredSheet = true
+                }
+
+                Button(L10n.tr("select_all", default: "全选")) { store.selectAllResidue(true) }
+                    .disabled(store.residueGroups.isEmpty)
+                Button(L10n.tr("deselect_all", default: "取消全选")) { store.selectAllResidue(false) }
+                    .disabled(store.residueGroups.isEmpty)
+
+                Button {
+                    Task { await store.clean(store.residueGroups.flatMap(\.items).filter(\.isSelected)) }
+                } label: {
+                    Label(L10n.tr("clean_selected", default: "清理选中"), systemImage: "trash")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(store.residueGroups.isEmpty || store.isScanning || store.residueSelectedBytes == 0)
             }
 
-            Spacer()
-
-            Button(L10n.tr("manage_ignored", default: "已忽略管理")) {
-                showIgnoredSheet = true
-            }
-
-            Button(L10n.tr("select_all", default: "全选")) { store.selectAllResidue(true) }
-                .disabled(store.residueGroups.isEmpty)
-            Button(L10n.tr("deselect_all", default: "取消全选")) { store.selectAllResidue(false) }
-                .disabled(store.residueGroups.isEmpty)
-
-            Button {
-                Task { await store.clean(store.residueGroups.flatMap(\.items).filter(\.isSelected)) }
-            } label: {
-                Label(L10n.tr("clean_selected", default: "清理选中"), systemImage: "trash")
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(store.residueGroups.isEmpty || store.isScanning || store.residueSelectedBytes == 0)
+            Label(
+                L10n.tr("residue_warning_banner", default: "卸载残留采用启发式识别，可能误判；全部默认为高风险且不勾选，请逐项确认后再清理。"),
+                systemImage: "exclamationmark.triangle.fill"
+            )
+            .font(.caption)
+            .foregroundStyle(.orange)
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 14)

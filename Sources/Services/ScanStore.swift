@@ -7,7 +7,6 @@ final class ScanStore: ObservableObject {
     @Published var dailyGroups: [ScanGroup] = []
     @Published var residueGroups: [ScanGroup] = []
     @Published var ignoredResidueGroups: [ScanGroup] = []
-    @Published var officeGroups: [OfficeScanGroup] = []
     @Published var installedApps: [InstalledAppInfo] = []
     @Published var recycleEntries: [RecycleBin.Entry] = []
     @Published var updateInfo: UpdateInfo?
@@ -26,8 +25,10 @@ final class ScanStore: ObservableObject {
     @Published var includeDiagnostics = true
     @Published var includeDerivedData = true
     @Published var includeTempFiles = true
+    @Published var includeOffice = true
 
     @Published var includeAppSupport = true
+    @Published var includeContainers = true
     @Published var includePrefs = true
     @Published var includeSavedState = true
     @Published var includeHTTPStorage = true
@@ -44,13 +45,17 @@ final class ScanStore: ObservableObject {
         totalBytes.fileSizeText
     }
 
-    var officeTotalBytes: Int64 {
-        officeGroups.reduce(0) { $0 + $1.totalBytes }
-    }
-
     var itemCount: Int {
         allItems.count
     }
+
+    var lowRiskCount: Int { allItems.filter { $0.risk == .low }.count }
+    var mediumRiskCount: Int { allItems.filter { $0.risk == .medium }.count }
+    var highRiskCount: Int { allItems.filter { $0.risk == .high }.count }
+
+    var lowRiskBytes: Int64 { allItems.filter { $0.risk == .low }.reduce(0) { $0 + $1.sizeBytes } }
+    var mediumRiskBytes: Int64 { allItems.filter { $0.risk == .medium }.reduce(0) { $0 + $1.sizeBytes } }
+    var highRiskBytes: Int64 { allItems.filter { $0.risk == .high }.reduce(0) { $0 + $1.sizeBytes } }
 
     var dailySelectedBytes: Int64 {
         dailyGroups.flatMap(\.items).filter(\.isSelected).reduce(0) { $0 + $1.sizeBytes }
@@ -62,6 +67,27 @@ final class ScanStore: ObservableObject {
 
     var hasScanned: Bool {
         !dailyGroups.isEmpty || !residueGroups.isEmpty || !ignoredResidueGroups.isEmpty
+    }
+
+    /// Daily junk grouped by software instead of content kind. Items without
+    /// a recognizable app land in "System / Other".
+    var dailyGroupsByApp: [ScanGroup] {
+        let items = dailyGroups.flatMap(\.items)
+        let grouped = Dictionary(grouping: items) { appKey(for: $0) }
+        return grouped.keys.sorted().compactMap { key in
+            guard let groupItems = grouped[key] else { return nil }
+            let sorted = groupItems.sorted { $0.sizeBytes > $1.sizeBytes }
+            guard let first = sorted.first else { return nil }
+            let isSystem = key == Self.systemOtherKey
+            let title = resolvedAppName(for: first) ?? L10n.tr("system_other", default: "系统 / 其他")
+            return ScanGroup(
+                id: "app-\(key)",
+                title: title,
+                icon: isSystem ? "gearshape" : "app.badge",
+                detail: isSystem ? L10n.tr("system_other_detail", default: "无法归属到具体应用的通用系统内容") : nil,
+                items: sorted
+            )
+        }
     }
 
     var cleanupDestinationIsRecycle: Bool {
@@ -78,14 +104,20 @@ final class ScanStore: ObservableObject {
 
         let enabledKinds = enabledJunkKinds()
         let enabledResidue = enabledResidueKinds()
+        let scanOffice = includeOffice
 
-        let (dailyEntries, residueEntries) = await Task.detached(priority: .userInitiated) {
+        let (dailyEntries, residueEntries, officeGroups) = await Task.detached(priority: .userInitiated) {
             let daily = JunkScanner.scanDailyJunk(kinds: enabledKinds)
             let residue = ResidueScanner.scanResidue(kinds: enabledResidue)
-            return (daily, residue)
+            let office = scanOffice ? OfficeCleaner.scan() : []
+            return (daily, residue, office)
         }.value
 
-        dailyGroups = Self.groupDaily(dailyEntries)
+        var groups = Self.groupDaily(dailyEntries)
+        if let officeGroup = Self.groupOffice(officeGroups) {
+            groups.append(officeGroup)
+        }
+        dailyGroups = groups
         let (active, ignored) = partitionByIgnoreStatus(residueEntries)
         residueGroups = Self.groupResidue(active)
         ignoredResidueGroups = Self.groupResidue(ignored)
@@ -114,21 +146,6 @@ final class ScanStore: ObservableObject {
         if !summary.failedPaths.isEmpty {
             lastError = L10n.tr("clean_failed", default: "有 %d 项未能清理（可能正被占用）：%@", summary.failedPaths.count, summary.failedPaths.prefix(3).joined(separator: "、"))
         }
-        isScanning = false
-    }
-
-    func scanOffice() async {
-        guard !isScanning else { return }
-        isScanning = true
-        progressText = L10n.tr("scanning_office", default: "正在扫描办公软件…")
-        lastError = nil
-
-        let groups = await Task.detached(priority: .userInitiated) {
-            OfficeCleaner.scan()
-        }.value
-
-        officeGroups = groups
-        progressText = L10n.tr("scan_done", default: "扫描完成")
         isScanning = false
     }
 
@@ -323,6 +340,20 @@ final class ScanStore: ObservableObject {
     }
 
     func toggleGroup(_ groupID: String) {
+        if groupID.hasPrefix("app-") {
+            let key = String(groupID.dropFirst("app-".count))
+            let matching = dailyGroups.flatMap(\.items).filter { appKey(for: $0) == key }
+            guard !matching.isEmpty else { return }
+            let allSelected = matching.allSatisfy(\.isSelected)
+            for groupIndex in dailyGroups.indices {
+                for itemIndex in dailyGroups[groupIndex].items.indices
+                where appKey(for: dailyGroups[groupIndex].items[itemIndex]) == key {
+                    dailyGroups[groupIndex].items[itemIndex].isSelected = !allSelected
+                }
+            }
+            return
+        }
+
         func toggle(_ groups: inout [ScanGroup]) {
             guard let index = groups.firstIndex(where: { $0.id == groupID }) else { return }
             let items = groups[index].items
@@ -334,17 +365,6 @@ final class ScanStore: ObservableObject {
         toggle(&dailyGroups)
         toggle(&residueGroups)
         toggle(&ignoredResidueGroups)
-        for officeIndex in officeGroups.indices {
-            for branchIndex in officeGroups[officeIndex].branches.indices
-            where officeGroups[officeIndex].branches[branchIndex].id == groupID {
-                let items = officeGroups[officeIndex].branches[branchIndex].items
-                let allSelected = items.allSatisfy(\.isSelected)
-                for itemIndex in officeGroups[officeIndex].branches[branchIndex].items.indices {
-                    officeGroups[officeIndex].branches[branchIndex].items[itemIndex].isSelected = !allSelected
-                }
-                return
-            }
-        }
     }
 
     // MARK: - Private helpers
@@ -401,6 +421,7 @@ final class ScanStore: ObservableObject {
     private func enabledResidueKinds() -> Set<ResidueKind> {
         var set: Set<ResidueKind> = []
         if includeAppSupport { set.insert(.applicationSupport) }
+        if includeContainers { set.insert(.containers) }
         if includePrefs { set.insert(.preferences) }
         if includeSavedState { set.insert(.savedState) }
         if includeHTTPStorage { set.insert(.httpStorage) }
@@ -437,10 +458,48 @@ final class ScanStore: ObservableObject {
                 items: items.map { JunkItem(
                     id: $0.id, name: $0.name, path: $0.path, sizeBytes: $0.sizeBytes,
                     kind: $0.kind, residueKind: $0.residueKind, officeKind: $0.officeKind,
-                    appName: $0.appName, isSelected: kind.isDefaultSafe)
+                    appName: $0.appName, isSelected: kind.risk == .low)
                 }.sorted { $0.sizeBytes > $1.sizeBytes }
             )
         }
+    }
+
+    /// Merges office/chat app cleaning into a single daily-junk branch so
+    /// "办公专清" is part of the regular cleanup flow.
+    private static func groupOffice(_ groups: [OfficeScanGroup]) -> ScanGroup? {
+        let items = groups.flatMap { $0.branches.flatMap(\.items) }
+            .map { item in
+                JunkItem(
+                    id: item.id,
+                    name: item.name,
+                    path: item.path,
+                    sizeBytes: item.sizeBytes,
+                    kind: item.kind,
+                    residueKind: item.residueKind,
+                    officeKind: item.officeKind,
+                    appName: item.appName,
+                    isSelected: item.isDefaultChecked
+                )
+            }
+            .sorted { $0.sizeBytes > $1.sizeBytes }
+        guard !items.isEmpty else { return nil }
+        return ScanGroup(
+            id: "officeCache",
+            title: L10n.tr("office_cache_group_title", default: "办公软件缓存"),
+            icon: "bubble.left.and.bubble.right",
+            detail: L10n.tr("office_cache_group_detail", default: "微信、企业微信、QQ、钉钉、飞书等办公软件的缓存与临时文件"),
+            items: items
+        )
+    }
+
+    private static let systemOtherKey = "system-other"
+
+    private func appKey(for item: JunkItem) -> String {
+        resolvedAppName(for: item)?.lowercased() ?? Self.systemOtherKey
+    }
+
+    private func resolvedAppName(for item: JunkItem) -> String? {
+        item.appName ?? CommonApps.appName(fromFolderName: item.name, kind: item.kind)
     }
 
     private static func groupResidue(_ entries: [ScannedEntry]) -> [ScanGroup] {

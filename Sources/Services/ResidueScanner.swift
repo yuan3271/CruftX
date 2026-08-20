@@ -37,6 +37,22 @@ enum ResidueScanner {
             entries += found
         }
 
+        // Sandboxed apps keep user data in Containers / Group Containers.
+        // Only bundle-ID-shaped names are considered, so this stays precise.
+        if kinds.contains(.containers) {
+            for dirName in ["Containers", "Group Containers"] {
+                let dir = lib.appendingPathComponent(dirName, isDirectory: true)
+                let found = orphanBundleIDFolders(
+                    in: dir,
+                    kind: .containers,
+                    installedBundleIDs: installedBundleIDs,
+                    currentApp: currentApp
+                )
+                candidates.formUnion(found.compactMap(\.appName).map(Self.normalize))
+                entries += found
+            }
+        }
+
         if kinds.contains(.caches) {
             let dir = lib.appendingPathComponent("Caches", isDirectory: true)
             let found = orphanFolders(
@@ -144,11 +160,14 @@ enum ResidueScanner {
         ) else { return [] }
 
         let systemNames = systemExclusions()
+        let genericNames = genericFolderNames()
         return urls.compactMap { url -> ScannedEntry? in
             let name = url.lastPathComponent
             let normalized = Self.normalize(name)
             guard !normalized.isEmpty else { return nil }
             guard !systemNames.contains(normalized) else { return nil }
+            guard !genericNames.contains(normalized) else { return nil }
+            guard normalized.count >= 3 else { return nil }
             guard !name.lowercased().hasPrefix("com.apple") else { return nil }
             guard normalized != Self.normalize(currentApp) else { return nil }
 
@@ -163,6 +182,10 @@ enum ResidueScanner {
             ) {
                 return nil
             }
+
+            // A cache or log written in the last 24h is probably still in
+            // use; treat it as "not residue" to avoid deleting active data.
+            if kind == .caches, isModifiedWithin(url, hours: 24) { return nil }
 
             guard let size = entrySize(at: url), size > 0 else { return nil }
             return ScannedEntry(
@@ -191,12 +214,14 @@ enum ResidueScanner {
         return urls.compactMap { url -> ScannedEntry? in
             let name = url.lastPathComponent
             guard isBundleID(name) else { return nil }
-            guard !name.lowercased().hasPrefix("com.apple") else { return nil }
-            guard !name.lowercased().contains(Self.normalize(currentApp)) else { return nil }
+            let base = Self.stripGroupPrefix(name)
+            guard !base.lowercased().hasPrefix("com.apple") else { return nil }
+            guard !base.lowercased().contains(Self.normalize(currentApp)) else { return nil }
             guard !matchesAnyInstalled(bundleID: name, installed: installedBundleIDs) else { return nil }
 
             let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey])
             if values?.isSymbolicLink == true { return nil }
+            if kind == .caches, isModifiedWithin(url, hours: 24) { return nil }
             guard let size = entrySize(at: url), size > 0 else { return nil }
 
             return ScannedEntry(
@@ -263,6 +288,7 @@ enum ResidueScanner {
             if installedNormNames.contains(normalized) { return nil }
             if isBundleID(name), matchesAnyInstalled(bundleID: name, installed: installedBundleIDs) { return nil }
 
+            if isModifiedWithin(url, hours: 24) { return nil }
             guard let size = entrySize(at: url), size > 0 else { return nil }
             return ScannedEntry(
                 name: name,
@@ -321,8 +347,16 @@ enum ResidueScanner {
     // MARK: - Matching helpers
 
     private static func matchesAnyInstalled(bundleID: String, installed: Set<String>) -> Bool {
-        let normalized = Self.normalize(bundleID)
-        return installed.contains { Self.normalize($0) == normalized || normalized.hasPrefix(Self.normalize($0)) }
+        var key = Self.normalize(bundleID)
+        if key.hasPrefix("group") {
+            key = String(key.dropFirst(5))
+        }
+        return installed.contains { raw in
+            let installedNorm = Self.normalize(raw)
+            return key == installedNorm
+                || key.hasPrefix(installedNorm)
+                || (key.contains(installedNorm) && installedNorm.count >= 8)
+        }
     }
 
     /// Matches a folder name against installed apps, both by exact name and
@@ -334,10 +368,39 @@ enum ResidueScanner {
         installedBundleIDs: Set<String>
     ) -> Bool {
         if installedNormNames.contains(normalized) { return true }
+        // Bundle-ID prefix match: com.tencent.LemonMonitor clearly belongs to
+        // installed com.tencent.Lemon (legacy bundle ID change).
+        if installedBundleIDs.contains(where: { normalized.hasPrefix(Self.normalize($0)) }) {
+            return true
+        }
         // Short names are too generic for containment matching.
         guard normalized.count >= 4 else { return false }
-        return installedBundleIDs.contains { Self.normalize($0).contains(normalized) }
-            || installedNormNames.contains { $0.contains(normalized) }
+        let installedNames = installedNormNames
+            .union(installedBundleIDs.map(Self.normalize))
+            .filter { $0.count >= 5 }
+        // The folder is contained in an installed name, or shares a
+        // significant token with it (e.g. "LemonMonitor" vs "Tencent Lemon").
+        return installedNames.contains { $0.contains(normalized) }
+            || installedNames.contains { sharesSignificantToken(normalized, with: $0) }
+    }
+
+    /// A longest common substring of >= 5 chars means the folder name is too
+    /// close to an installed app's name/bundle ID to safely call it residue.
+    private static func sharesSignificantToken(_ lhs: String, with rhs: String) -> Bool {
+        guard lhs.count >= 5, rhs.count >= 5 else { return false }
+        let a = Array(lhs)
+        let b = Array(rhs)
+        var table = Array(repeating: Array(repeating: 0, count: b.count + 1), count: a.count + 1)
+        var best = 0
+        for i in 1...a.count {
+            for j in 1...b.count where a[i - 1] == b[j - 1] {
+                table[i][j] = table[i - 1][j - 1] + 1
+                if table[i][j] > best {
+                    best = table[i][j]
+                }
+            }
+        }
+        return best >= 5
     }
 
     static func isBundleID(_ string: String) -> Bool {
@@ -379,56 +442,54 @@ enum ResidueScanner {
         return Set(names.map(Self.normalize))
     }
 
+    /// Names too generic to call "residue of a removed app" without strong
+    /// evidence. They are skipped in name-based scans (bundle-ID folders in
+    /// Containers/Preferences are still matched exactly).
+    private static func genericFolderNames() -> Set<String> {
+        let names = [
+            "Accounts", "AddressBook", "AirPlay", "Audio", "Automator",
+            "Backups", "BackgroundTaskManagementAgent", "Cache", "Caches",
+            "Calendar", "Clock", "Cloud", "CloudDocs", "Components", "Contacts",
+            "Containers", "CoreAudio", "CoreData", "CoreDuet", "CoreLocation",
+            "CoreSimulator", "Crashpad", "Data", "Database", "Databases",
+            "Desktop", "Developer", "Diagnostics", "Dictionaries", "DiskImages",
+            "Documents", "Downloads", "Extensions", "Files", "FindMy", "Fonts",
+            "Frameworks", "Group Containers", "HomeKit", "Image Capture",
+            "Installers", "Internet Plug-Ins", "Keyboard", "Keychains",
+            "LaunchAgents", "LaunchDaemons", "Libraries", "Mail", "Maps",
+            "Media", "Messages", "Metadata", "MobileDevice", "Music", "Notes",
+            "Photos", "Plugins", "Preferences", "Printers", "Public",
+            "Records", "Scripts", "Security", "Services", "Shared", "Spaces",
+            "Storage", "Support", "SyncServices", "System", "Temp", "Temporary",
+            "TextInputSources", "Tools", "Trash", "Updates", "User", "Users",
+            "Utilities", "Weather", "Web", "WebKit", "Widgets", "WindowServer"
+        ]
+        return Set(names.map(Self.normalize))
+    }
+
+    /// True when the item's content modification date is within the given
+    /// number of hours, indicating the folder is likely still in use.
+    private static func isModifiedWithin(_ url: URL, hours: Double) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]),
+              let date = values.contentModificationDate else {
+            return false
+        }
+        return Date().timeIntervalSince(date) < hours * 3600
+    }
+
+    /// "group.com.example.App" -> "com.example.App"; other names unchanged.
+    private static func stripGroupPrefix(_ name: String) -> String {
+        if name.lowercased().hasPrefix("group.") {
+            return String(name.dropFirst("group.".count))
+        }
+        return name
+    }
+
     static func normalize(_ string: String) -> String {
         string.lowercased().filter { $0.isLetter || $0.isNumber }
     }
 
     private static func displayName(for bundleOrName: String) -> String {
-        guard isBundleID(bundleOrName) else { return bundleOrName }
-        if let known = CommonApps.displayName(for: bundleOrName) {
-            return known
-        }
-        var components = bundleOrName.split(separator: ".").map(String.init)
-        // Drop the reverse-DNS prefix, e.g. "com." / "io." / "cn.".
-        if let first = components.first,
-           ["com", "cn", "org", "io", "net", "me", "co", "app", "dev", "www"].contains(first.lowercased()) {
-            components.removeFirst()
-        }
-
-        let genericWords: Set<String> = [
-            "pro", "app", "mac", "desktop", "client", "mobile", "hd", "web",
-            "helper", "agent", "service", "daemon", "extension", "today",
-            "widget", "share", "main", "core", "lite", "beta", "test", "dev",
-            "macos", "osx", "suite", "plugin", "appex", "xpc"
-        ]
-
-        var chosen = components.last ?? bundleOrName
-        for component in components.reversed() {
-            var cleaned = component
-            for prefix in ["mac-", "macos-", "osx-"] where cleaned.lowercased().hasPrefix(prefix) {
-                cleaned = String(cleaned.dropFirst(prefix.count))
-            }
-            if cleaned.lowercased().hasSuffix("-mac") {
-                cleaned = String(cleaned.dropLast(4))
-            }
-            guard !cleaned.isEmpty, !genericWords.contains(cleaned.lowercased()) else { continue }
-            chosen = cleaned
-            break
-        }
-        return splitCamelCase(chosen)
-    }
-
-    private static func splitCamelCase(_ string: String) -> String {
-        var result = ""
-        for (index, char) in string.enumerated() {
-            if char.isUppercase, index > 0 {
-                let previous = string[string.index(string.startIndex, offsetBy: index - 1)]
-                if previous.isLowercase || previous.isNumber {
-                    result.append(" ")
-                }
-            }
-            result.append(char)
-        }
-        return result
+        CommonApps.displayName(for: bundleOrName) ?? bundleOrName
     }
 }

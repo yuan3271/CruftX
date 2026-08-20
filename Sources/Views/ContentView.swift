@@ -16,8 +16,6 @@ struct ContentView: View {
                 DailyJunkView()
             case .uninstallResidue:
                 ResidueView()
-            case .officeClean:
-                OfficeCleanView()
             case .uninstall:
                 UninstallView()
             case .recycleBin:
@@ -44,7 +42,6 @@ struct SidebarView: View {
             Section(L10n.tr("clean_tools", default: "清理工具")) {
                 sidebarRow(.dailyJunk)
                 sidebarRow(.uninstallResidue)
-                sidebarRow(.officeClean)
             }
             Section(L10n.tr("app_management", default: "应用管理")) {
                 sidebarRow(.uninstall)

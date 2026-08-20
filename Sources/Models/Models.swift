@@ -1,10 +1,9 @@
-import Foundation
+import SwiftUI
 
 enum AppSection: String, CaseIterable, Identifiable, Hashable {
     case dashboard
     case dailyJunk
     case uninstallResidue
-    case officeClean
     case uninstall
     case recycleBin
     case settings
@@ -16,7 +15,6 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         case .dashboard: return L10n.tr("dashboard", default: "概览")
         case .dailyJunk: return L10n.tr("daily_junk", default: "日常垃圾")
         case .uninstallResidue: return L10n.tr("uninstall_residue", default: "卸载残留")
-        case .officeClean: return L10n.tr("office_clean", default: "办公专清")
         case .uninstall: return L10n.tr("uninstall_app", default: "卸载应用")
         case .recycleBin: return L10n.tr("recycle_bin", default: "回收站")
         case .settings: return L10n.tr("settings", default: "设置")
@@ -28,10 +26,63 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         case .dashboard: return "gauge.with.dots.needle.50percent"
         case .dailyJunk: return "trash"
         case .uninstallResidue: return "square.grid.2x2"
-        case .officeClean: return "bubble.left.and.bubble.right"
         case .uninstall: return "xmark.app"
         case .recycleBin: return "arrow.uturn.backward.circle"
         case .settings: return "gearshape"
+        }
+    }
+}
+
+/// How risky it is to delete an item. Low-risk content is checked by default;
+/// medium and high require explicit confirmation.
+enum CleanupRisk: String, CaseIterable, Identifiable {
+    case low
+    case medium
+    case high
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .low: return L10n.tr("risk_low", default: "低风险")
+        case .medium: return L10n.tr("risk_medium", default: "中风险")
+        case .high: return L10n.tr("risk_high", default: "高风险")
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .low: return "checkmark.shield"
+        case .medium: return "exclamationmark.shield"
+        case .high: return "exclamationmark.octagon"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .low: return .green
+        case .medium: return .orange
+        case .high: return .red
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .low: return L10n.tr("risk_low_detail", default: "可重建或价值低，默认勾选")
+        case .medium: return L10n.tr("risk_medium_detail", default: "可能含个人数据，请确认后清理")
+        case .high: return L10n.tr("risk_high_detail", default: "可能含不可恢复的数据，谨慎清理")
+        }
+    }
+
+    static func max(_ a: CleanupRisk, _ b: CleanupRisk) -> CleanupRisk {
+        a.rank >= b.rank ? a : b
+    }
+
+    private var rank: Int {
+        switch self {
+        case .low: return 0
+        case .medium: return 1
+        case .high: return 2
         }
     }
 }
@@ -76,14 +127,12 @@ enum JunkKind: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Kinds checked by default in a scan. Conservative by design:
-    /// regenerable, low-value files are checked; large caches are not.
-    var isDefaultSafe: Bool {
+    var risk: CleanupRisk {
         switch self {
-        case .tempFiles, .logs:
-            return true
-        case .caches, .diagnosticReports, .derivedData:
-            return false
+        case .caches, .logs, .tempFiles:
+            return .low
+        case .diagnosticReports, .derivedData:
+            return .medium
         }
     }
 }
@@ -91,6 +140,7 @@ enum JunkKind: String, CaseIterable, Identifiable {
 /// Kinds of uninstall residue locations.
 enum ResidueKind: String, CaseIterable, Identifiable {
     case applicationSupport
+    case containers
     case caches
     case preferences
     case savedState
@@ -102,6 +152,7 @@ enum ResidueKind: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .applicationSupport: return L10n.tr("residue_kind_app_support", default: "应用支持文件")
+        case .containers: return L10n.tr("residue_kind_containers", default: "容器数据")
         case .caches: return L10n.tr("residue_kind_caches", default: "缓存")
         case .preferences: return L10n.tr("residue_kind_prefs", default: "偏好设置")
         case .savedState: return L10n.tr("residue_kind_saved_state", default: "已保存的窗口状态")
@@ -113,11 +164,21 @@ enum ResidueKind: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .applicationSupport: return "folder"
+        case .containers: return "shippingbox"
         case .caches: return "cylinder.split.1x2"
         case .preferences: return "slider.horizontal.3"
         case .savedState: return "macwindow"
         case .httpStorage: return "globe"
         case .logs: return "doc.text"
+        }
+    }
+
+    var risk: CleanupRisk {
+        switch self {
+        case .caches, .logs:
+            return .medium
+        case .applicationSupport, .containers, .preferences, .savedState, .httpStorage:
+            return .high
         }
     }
 }
@@ -154,6 +215,17 @@ enum OfficeKind: String, CaseIterable, Identifiable {
         case .otherCache: return "ellipsis.circle"
         }
     }
+
+    var risk: CleanupRisk {
+        switch self {
+        case .appCache, .tempCache:
+            return .low
+        case .imageCache, .videoCache, .otherCache:
+            return .medium
+        case .fileCache:
+            return .high
+        }
+    }
 }
 
 /// A single discovered item, either daily junk or uninstall residue.
@@ -173,6 +245,16 @@ struct JunkItem: Identifiable, Sendable {
     }
 
     var isResidue: Bool { appName != nil || residueKind != nil }
+
+    var risk: CleanupRisk {
+        if let residueKind { return residueKind.risk }
+        if let officeKind { return officeKind.risk }
+        if let kind { return kind.risk }
+        return .medium
+    }
+
+    /// Default selection rule: only low-risk, regenerable content.
+    var isDefaultChecked: Bool { risk == .low }
 }
 
 /// Immutable snapshot produced by a background scanner.
@@ -191,7 +273,7 @@ struct ScannedEntry: Sendable, Identifiable {
 }
 
 /// Specialized cleaning result for one office/chat app, with branches.
-struct OfficeScanGroup: Identifiable {
+struct OfficeScanGroup: Identifiable, Sendable {
     let id: String
     let appName: String
     var bundleID: String? = nil
@@ -223,7 +305,7 @@ struct InstalledAppInfo: Identifiable, Sendable {
     }
 }
 
-struct ScanGroup: Identifiable {
+struct ScanGroup: Identifiable, Sendable {
     let id: String
     let title: String
     let icon: String
@@ -238,6 +320,14 @@ struct ScanGroup: Identifiable {
     var sizeText: String {
         ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)
     }
+
+    var maxRisk: CleanupRisk {
+        items.reduce(.low) { CleanupRisk.max($0, $1.risk) }
+    }
+
+    var lowRiskCount: Int { items.filter { $0.risk == .low }.count }
+    var mediumRiskCount: Int { items.filter { $0.risk == .medium }.count }
+    var highRiskCount: Int { items.filter { $0.risk == .high }.count }
 }
 
 struct CleanSummary {
