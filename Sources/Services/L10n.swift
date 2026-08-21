@@ -197,7 +197,15 @@ enum L10n {
             "current_user": "当前用户目录",
             "clean_method": "清理方式",
             "about_text": "CruftX 只扫描当前用户目录下的缓存、日志、办公软件缓存与已卸载应用的遗留文件。默认只勾选低风险内容；卸载残留需逐项确认。清理去向可在上方选择：移入系统废纸篓，或保存在 CruftX 回收站中随时还原/永久删除。",
-            "update_settings_hint": "自动检查 GitHub Releases 新版本，下载安装镜像。"
+            "update_settings_hint": "自动检查 GitHub Releases 新版本，下载安装镜像。",
+            "clean_permission_failed": "有 %d 项因权限不足未能清理，请在「系统设置 → 隐私与安全性 → 完全磁盘访问权限」中允许 CruftX 后重试。",
+            "uninstall_summary_permission": "有 %d 项因权限不足未能清理，请在「系统设置 → 隐私与安全性 → 完全磁盘访问权限」中允许 CruftX。",
+            "access_issue_message": "部分目录无法读取，扫描与清理结果可能不完整。请在「系统设置 → 隐私与安全性 → 完全磁盘访问权限」中允许 CruftX。",
+            "grant_full_disk_access": "前往授权完全磁盘访问权限",
+            "grant_full_disk_access_short": "前往授权",
+            "permissions_section": "权限",
+            "permissions_ok": "所有目录均可访问",
+            "permissions_warn": "%d 个目录无法读取，可能影响扫描结果："
         ],
         "en": [
             "dashboard": "Overview",
@@ -363,7 +371,15 @@ enum L10n {
             "current_user": "Current user directory",
             "clean_method": "Cleanup Method",
             "about_text": "CruftX only scans caches, logs, office app caches and leftovers of uninstalled apps in your user directory. Only low-risk items are checked by default; residue requires manual confirmation. Choose where cleaned items go above: the system Trash, or the CruftX Recycle Bin where you can restore or permanently delete them.",
-            "update_settings_hint": "Automatically checks GitHub Releases for new versions and downloads the installer."
+            "update_settings_hint": "Automatically checks GitHub Releases for new versions and downloads the installer.",
+            "clean_permission_failed": "Couldn't clean %d items due to insufficient permission. Grant CruftX Full Disk Access in System Settings → Privacy & Security, then try again.",
+            "uninstall_summary_permission": "Couldn't clean %d items due to insufficient permission. Grant CruftX Full Disk Access in System Settings → Privacy & Security.",
+            "access_issue_message": "Some directories can't be read, so scan and cleanup results may be incomplete. Grant CruftX Full Disk Access in System Settings → Privacy & Security.",
+            "grant_full_disk_access": "Grant Full Disk Access",
+            "grant_full_disk_access_short": "Grant Access",
+            "permissions_section": "Permissions",
+            "permissions_ok": "All directories are accessible",
+            "permissions_warn": "%d directories can't be read, which may affect results:"
         ]
     ]
 }

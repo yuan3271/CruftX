@@ -240,6 +240,41 @@ struct JunkItem: Identifiable, Sendable {
     let appName: String?
     var isSelected: Bool = true
 
+    /// Pre-computed, lower-cased search text (stable fields only, so it stays
+    /// correct across language switches). Localized labels are appended at
+    /// query time by `JunkSearch.matches(_:query:)`.
+    let searchKey: String
+
+    init(
+        id: String,
+        name: String,
+        path: URL,
+        sizeBytes: Int64,
+        kind: JunkKind?,
+        residueKind: ResidueKind?,
+        officeKind: OfficeKind? = nil,
+        appName: String?,
+        isSelected: Bool = true
+    ) {
+        self.id = id
+        self.name = name
+        self.path = path
+        self.sizeBytes = sizeBytes
+        self.kind = kind
+        self.residueKind = residueKind
+        self.officeKind = officeKind
+        self.appName = appName
+        self.isSelected = isSelected
+        self.searchKey = JunkSearch.makeKey(
+            name: name,
+            path: path,
+            appName: appName,
+            kind: kind,
+            residueKind: residueKind,
+            officeKind: officeKind
+        )
+    }
+
     var sizeText: String {
         ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
     }
@@ -334,6 +369,9 @@ struct CleanSummary {
     let freedBytes: Int64
     let itemCount: Int
     let failedPaths: [String]
+    /// How many of the failures were caused by a permission denial (e.g. the
+    /// item lives in a Full-Disk-Access-protected folder).
+    var permissionFailures: Int = 0
 
     var freedText: String {
         ByteCountFormatter.string(fromByteCount: freedBytes, countStyle: .file)

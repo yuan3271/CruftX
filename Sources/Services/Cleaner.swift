@@ -11,6 +11,7 @@ enum Cleaner {
         var freed: Int64 = 0
         var cleanedCount = 0
         var failed: [String] = []
+        var permissionFailures = 0
         let fm = FileManager.default
 
         for item in items {
@@ -21,9 +22,15 @@ enum Cleaner {
                 cleanedCount += 1
             } catch {
                 failed.append(item.name)
+                if Permissions.isPermissionError(error) { permissionFailures += 1 }
             }
         }
 
-        return CleanSummary(freedBytes: freed, itemCount: cleanedCount, failedPaths: failed)
+        return CleanSummary(
+            freedBytes: freed,
+            itemCount: cleanedCount,
+            failedPaths: failed,
+            permissionFailures: permissionFailures
+        )
     }
 }

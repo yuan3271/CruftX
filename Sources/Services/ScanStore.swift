@@ -17,6 +17,7 @@ final class ScanStore: ObservableObject {
     @Published var progressText = L10n.tr("status_ready", default: "准备就绪")
     @Published var lastMessage: String?
     @Published var lastError: String?
+    @Published var accessIssues: [String] = []
 
     @AppStorage("cleanupDestination") var cleanupDestination = "trash"
 
@@ -106,12 +107,14 @@ final class ScanStore: ObservableObject {
         let enabledResidue = enabledResidueKinds()
         let scanOffice = includeOffice
 
-        let (dailyEntries, residueEntries, officeGroups) = await Task.detached(priority: .userInitiated) {
+        let (dailyEntries, residueEntries, officeGroups, scanAccessIssues) = await Task.detached(priority: .userInitiated) {
             let daily = JunkScanner.scanDailyJunk(kinds: enabledKinds)
             let residue = ResidueScanner.scanResidue(kinds: enabledResidue)
             let office = scanOffice ? OfficeCleaner.scan() : []
-            return (daily, residue, office)
+            let issues = Permissions.unreadableLocations()
+            return (daily, residue, office, issues)
         }.value
+        accessIssues = scanAccessIssues
 
         var groups = Self.groupDaily(dailyEntries)
         if let officeGroup = Self.groupOffice(officeGroups) {
@@ -144,9 +147,23 @@ final class ScanStore: ObservableObject {
             lastMessage = L10n.tr("clean_summary_trash", default: "已清理 %d 项，释放 %@", summary.itemCount, summary.freedText)
         }
         if !summary.failedPaths.isEmpty {
-            lastError = L10n.tr("clean_failed", default: "有 %d 项未能清理（可能正被占用）：%@", summary.failedPaths.count, summary.failedPaths.prefix(3).joined(separator: "、"))
+            if summary.permissionFailures > 0 {
+                lastError = L10n.tr(
+                    "clean_permission_failed",
+                    default: "有 %d 项因权限不足未能清理，请在「系统设置 → 隐私与安全性 → 完全磁盘访问权限」中允许 CruftX 后重试。",
+                    summary.permissionFailures
+                )
+            } else {
+                lastError = L10n.tr("clean_failed", default: "有 %d 项未能清理（可能正被占用）：%@", summary.failedPaths.count, summary.failedPaths.prefix(3).joined(separator: "、"))
+            }
         }
         isScanning = false
+    }
+
+    /// Refreshes the list of scan roots that are unreadable due to missing
+    /// Full Disk Access. Called when opening Settings and after scanning.
+    func refreshAccessIssues() {
+        accessIssues = Permissions.unreadableLocations()
     }
 
     // MARK: - Uninstall

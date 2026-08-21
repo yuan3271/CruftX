@@ -94,6 +94,27 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section(L10n.tr("permissions_section", default: "权限")) {
+                if store.accessIssues.isEmpty {
+                    Text(L10n.tr("permissions_ok", default: "所有目录均可访问"))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text(L10n.tr("permissions_warn", default: "%d 个目录无法读取，可能影响扫描结果：", store.accessIssues.count))
+                        .foregroundStyle(.secondary)
+                    ForEach(store.accessIssues.prefix(5), id: \.self) { path in
+                        Text(path)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Button {
+                        Permissions.openFullDiskAccessSettings()
+                    } label: {
+                        Label(L10n.tr("grant_full_disk_access", default: "前往授权完全磁盘访问权限"), systemImage: "lock.open")
+                    }
+                }
+            }
+
             Section(L10n.tr("settings_about", default: "关于")) {
                 LabeledContent(L10n.tr("version", default: "版本"), value: UpdateChecker.currentVersion)
                 LabeledContent(L10n.tr("scan_scope", default: "扫描范围"), value: L10n.tr("current_user", default: "当前用户目录"))
@@ -110,6 +131,7 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle(L10n.tr("settings", default: "设置"))
+        .onAppear { store.refreshAccessIssues() }
     }
 
     private var languageBinding: Binding<String> {

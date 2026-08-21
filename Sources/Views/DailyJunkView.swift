@@ -39,7 +39,7 @@ struct DailyJunkView: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return sourceGroups }
         return sourceGroups.compactMap { group in
-            let items = group.items.filter { matches($0, query: query) }
+            let items = group.items.filter { JunkSearch.matches($0, query: query) }
             guard !items.isEmpty else { return nil }
             return ScanGroup(
                 id: group.id,
@@ -184,19 +184,6 @@ struct DailyJunkView: View {
         }
     }
 
-    private func matches(_ item: JunkItem, query: String) -> Bool {
-        let haystack = [
-            item.name,
-            item.path.path,
-            item.appName ?? "",
-            item.kind?.title ?? "",
-            item.residueKind?.title ?? "",
-            item.officeKind?.title ?? "",
-            item.risk.title
-        ].joined(separator: " ").lowercased()
-        return haystack.contains(query)
-    }
-
     private func tint(for group: ScanGroup) -> Color {
         switch group.id {
         case JunkKind.caches.rawValue: return .blue
@@ -253,7 +240,7 @@ struct ResidueView: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return groups }
         return groups.compactMap { group in
-            let items = group.items.filter { matches($0, query: query) }
+            let items = group.items.filter { JunkSearch.matches($0, query: query) }
             guard !items.isEmpty else { return nil }
             return ScanGroup(
                 id: group.id,
@@ -264,17 +251,6 @@ struct ResidueView: View {
                 items: items
             )
         }
-    }
-
-    private func matches(_ item: JunkItem, query: String) -> Bool {
-        let haystack = [
-            item.name,
-            item.path.path,
-            item.appName ?? "",
-            item.residueKind?.title ?? "",
-            item.risk.title
-        ].joined(separator: " ").lowercased()
-        return haystack.contains(query)
     }
 
     var body: some View {

@@ -34,6 +34,7 @@ enum RecycleBin {
         var freed: Int64 = 0
         var movedCount = 0
         var failed: [String] = []
+        var permissionFailures = 0
 
         for item in items {
             let id = UUID().uuidString
@@ -53,11 +54,17 @@ enum RecycleBin {
                 movedCount += 1
             } catch {
                 failed.append(item.name)
+                if Permissions.isPermissionError(error) { permissionFailures += 1 }
             }
         }
 
         save(entries)
-        return CleanSummary(freedBytes: freed, itemCount: movedCount, failedPaths: failed)
+        return CleanSummary(
+            freedBytes: freed,
+            itemCount: movedCount,
+            failedPaths: failed,
+            permissionFailures: permissionFailures
+        )
     }
 
     // MARK: - Listing and restoring

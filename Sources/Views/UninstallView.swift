@@ -14,9 +14,7 @@ struct UninstallView: View {
     private var filteredApps: [InstalledAppInfo] {
         guard !searchText.isEmpty else { return store.installedApps }
         return store.installedApps.filter {
-            $0.name.localizedCaseInsensitiveContains(searchText)
-                || ($0.bundleID?.localizedCaseInsensitiveContains(searchText) ?? false)
-                || (displayName(for: $0).localizedCaseInsensitiveContains(searchText))
+            JunkSearch.matches("\($0.name) \($0.bundleID ?? "") \(displayName(for: $0))", query: searchText)
         }
     }
 
@@ -219,7 +217,15 @@ struct UninstallView: View {
         }
         message += L10n.tr("freed", default: "，释放 %@。", summary.freedText)
         if !summary.failedPaths.isEmpty {
-            message += "\n" + L10n.tr("clean_failed", default: "有 %d 项未能清理（可能正被占用）：%@", summary.failedPaths.count, summary.failedPaths.prefix(3).joined(separator: "、"))
+            if summary.permissionFailures > 0 {
+                message += "\n" + L10n.tr(
+                    "uninstall_summary_permission",
+                    default: "有 %d 项因权限不足未能清理，请在「系统设置 → 隐私与安全性 → 完全磁盘访问权限」中允许 CruftX。",
+                    summary.permissionFailures
+                )
+            } else {
+                message += "\n" + L10n.tr("clean_failed", default: "有 %d 项未能清理（可能正被占用）：%@", summary.failedPaths.count, summary.failedPaths.prefix(3).joined(separator: "、"))
+            }
         }
         return message
     }

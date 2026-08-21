@@ -41,6 +41,25 @@ struct DashboardView: View {
                     .padding(.horizontal, 24)
                 }
 
+                if !store.accessIssues.isEmpty {
+                    HStack(spacing: 8) {
+                        Image(systemName: "lock.rectangle.stack.fill")
+                            .foregroundStyle(.orange)
+                        Text(L10n.tr(
+                            "access_issue_message",
+                            default: "部分目录无法读取，扫描与清理结果可能不完整。请在「系统设置 → 隐私与安全性 → 完全磁盘访问权限」中允许 CruftX。"
+                        ))
+                        .font(.callout)
+                        Spacer()
+                        Button(L10n.tr("grant_full_disk_access_short", default: "前往授权")) {
+                            Permissions.openFullDiskAccessSettings()
+                        }
+                    }
+                    .padding(10)
+                    .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .padding(.horizontal, 24)
+                }
+
                 if store.lastError != nil {
                     StatusBanner(message: store.lastError, isError: true)
                 } else if store.lastMessage != nil {

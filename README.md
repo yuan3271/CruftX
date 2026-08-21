@@ -2,7 +2,7 @@
 
 一个原生 macOS 垃圾清理工具，界面遵循 Apple 人机界面指南（HIG）。由AI开发
 
-当前版本：**1.2.0**
+当前版本：**1.2.1**
 
 ## 软件全部由AI开发
 
@@ -52,12 +52,12 @@
 ./make_dmg.sh     # 生成带背景和 Applications 快捷方式的安装镜像
 ```
 
-产物：`build/CruftX-1.2.0.dmg`。版本号从 `Resources/Info.plist` 自动读取，升级时只需修改版本号后重新打包。首次运行 `make_dmg.sh` 会在 `build/dmg-venv` 中安装 dmgbuild（需联网）。
+产物：`build/CruftX-1.2.1.dmg`。版本号从 `Resources/Info.plist` 自动读取，升级时只需修改版本号后重新打包。首次运行 `make_dmg.sh` 会在 `build/dmg-venv` 中安装 dmgbuild（需联网）。
 
 ## 发布与自动更新
 
-1. 在 GitHub Releases 创建新 Release，tag 填 `v1.2.0`
-2. 上传 `build/CruftX-1.2.0.dmg` 作为附件
+1. 在 GitHub Releases 创建新 Release，tag 填 `v1.2.1`
+2. 上传 `build/CruftX-1.2.1.dmg` 作为附件
 3. 应用启动时会检查该仓库最新 Release，发现更高版本即可下载更新
 
 发布到 GitHub Releases 后，用户下载的 DMG 会被标记为“从互联网下载”，首次打开应用时若提示无法验证开发者，可在「系统设置 → 隐私与安全性」中点击「仍要打开」。

@@ -15,7 +15,7 @@ struct RecycleBinView: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return store.recycleEntries }
         return store.recycleEntries.filter {
-            $0.name.lowercased().contains(query) || $0.originalPath.lowercased().contains(query)
+            JunkSearch.matches("\($0.name) \($0.originalPath)", query: query)
         }
     }
 

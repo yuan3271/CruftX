@@ -1,3 +1,31 @@
+# CruftX 1.2.1 更新说明
+
+## 改进
+
+- **垃圾搜索优化**：日常垃圾、卸载残留、回收站与已安装应用的搜索改为分词匹配，支持多个关键词任意顺序组合（如「微信 图片」），匹配更精准；搜索键预计算，输入时不再反复构建文本，界面更跟手
+- **修复权限不足问题**：部分目录（如「容器」「组容器」及受保护的应用数据）在未授予「完全磁盘访问权限」时会无法读取，此前会被静默跳过。现在扫描后会自动检测并明确提示，并提供一键前往系统设置授权的入口；清理/卸载时也能区分「权限不足」与「文件正被占用」，给出准确原因
+
+## 安装 / 升级
+
+- 下载 `CruftX-1.2.1.dmg`，打开后拖入 Applications 文件夹
+- 直接覆盖旧版本即可，设置与回收站数据会保留
+
+---
+
+# CruftX 1.2.1 Release Notes
+
+## Improvements
+
+- **Smarter junk search**: Daily junk, residue, Recycle Bin and installed-app search now use token matching, so multi-keyword queries work in any order (e.g. "WeChat images"); search keys are pre-computed so typing stays responsive
+- **Fixed insufficient-permission issue**: some directories (e.g. Containers, Group Containers and protected app data) were silently skipped when CruftX lacks Full Disk Access. The app now detects them after a scan, explains the problem and offers a one-click link to grant access; cleanup/uninstall also distinguishes "permission denied" from "file in use" with an accurate message
+
+## Install / Upgrade
+
+- Download `CruftX-1.2.1.dmg`, open it and drag CruftX into Applications
+- Replacing an older version keeps your settings and Recycle Bin data
+
+---
+
 # CruftX 1.2.0 更新说明
 
 ## 新增
